@@ -1,1 +1,96 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ColorPaint</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="layout">
+    <section class="preview-card">
+      <h1>ColorPaint</h1>
+      <div class="room" data-room-preview>
+        <div class="wall" data-wall-preview aria-label="Стена"></div>
+        <div class="furniture" data-furniture-preview aria-label="Мебель"></div>
+      </div>
+      <p class="hint">Split-стена: до 4 секций в одном градиенте.</p>
+    </section>
 
+    <section class="controls">
+      <div class="control-group">
+        <h2>Стена</h2>
+        <label>Секций стены (1–4)
+          <input id="sectionCount" data-section-count type="number" min="1" max="4" value="1" />
+        </label>
+        <div class="section-buttons">
+          <button type="button" data-section-index="0" class="is-active">Секция 1</button>
+          <button type="button" data-section-index="1">Секция 2</button>
+          <button type="button" data-section-index="2">Секция 3</button>
+          <button type="button" data-section-index="3">Секция 4</button>
+        </div>
+        <div class="inline-fields">
+          <input id="wallHex" data-wall-hex type="text" placeholder="#AABBCC" />
+          <input id="wallPicker" data-wall-picker type="color" value="#d9d9d9" />
+          <button id="applyWallColor" data-apply-wall-color type="button">Применить цвет</button>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <h2>Мебель</h2>
+        <div class="inline-fields">
+          <input id="furnitureHex" data-furniture-hex type="text" placeholder="#778899" />
+          <input id="furniturePicker" data-furniture-picker type="color" value="#8c8c8c" />
+          <button id="applyFurnitureColor" data-apply-furniture-color type="button">Применить цвет</button>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <h2>Цвет из каталога</h2>
+        <div class="inline-fields wrap">
+          <select id="colorCatalog" data-color-catalog>
+            <option value="">Выберите базу</option>
+          </select>
+          <select id="catalogColor" data-catalog-color>
+            <option value="">Выберите цвет</option>
+          </select>
+          <select id="colorTarget" data-color-target>
+            <option value="wall">В стену</option>
+            <option value="furniture">В мебель</option>
+          </select>
+          <button id="applyCatalogColor" data-apply-catalog-color type="button">Применить цвет</button>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <h2>Шаблоны дизайнеров (60/30/10)</h2>
+        <div class="inline-fields wrap">
+          <select id="templateSelect" data-template-select>
+            <option value="">Выберите шаблон</option>
+          </select>
+          <button id="applyTemplate" data-apply-template type="button">Применить шаблон</button>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <h2>Похожие и контрастные</h2>
+        <button id="generateHarmony" data-generate-harmony type="button">Сгенерировать</button>
+        <div class="suggestions">
+          <div>
+            <h3>Similar</h3>
+            <ul id="similarColors" data-similar-list></ul>
+          </div>
+          <div>
+            <h3>Contrast</h3>
+            <ul id="contrastColors" data-contrast-list></ul>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="colorDatabase.js"></script>
+  <script src="designerTemplates.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
