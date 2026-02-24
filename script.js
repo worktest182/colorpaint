@@ -1,7 +1,4 @@
-diff --git a/script.js b/script.js
-index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..d3cb32a62c69fde07eb52029e34217c3c4fd90e1 100644
---- a/script.js
-+++ b/script.js
+
 @@ -0,0 +1,620 @@
 +(() => {
 +  'use strict';
@@ -623,3 +620,4 @@ index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..d3cb32a62c69fde07eb52029e34217c3
 +    };
 +  }
 +})();
+
