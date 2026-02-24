@@ -1,542 +1,344 @@
 (() => {
   'use strict';
 
-  const SUPPORTED_CATALOGS = ['dulux', 'ice parade', 'vision', 'ral'];
-  const DEFAULT_WALL_HEX = '#D9D9D9';
-  const DEFAULT_FURNITURE_HEX = '#8C8C8C';
+  const CATALOG_ALIASES = {
+    dulux: 'dulux',
+    vision: 'vision',
+    ral: 'ral',
+    'ice parade': 'iceparade',
+    iceparade: 'iceparade'
+  };
 
-  const q = (selector) => (typeof document !== 'undefined' ? document.querySelector(selector) : null);
-  const qa = (selector) => (typeof document !== 'undefined' ? Array.from(document.querySelectorAll(selector)) : []);
+  const q = (selector, root = document) => {
+    if (!root || typeof root.querySelector !== 'function') return null;
+    return root.querySelector(selector);
+  };
+
+  const qa = (selector, root = document) => {
+    if (!root || typeof root.querySelectorAll !== 'function') return [];
+    return Array.from(root.querySelectorAll(selector));
+  };
+
+  const normalizeHex = (value) => {
+    if (typeof value !== 'string') return null;
+    const hex = value.trim().toUpperCase();
+    return /^#[0-9A-F]{6}$/.test(hex) ? hex : null;
+  };
+
+  const normalizeCatalog = (value) => String(value || '').toLowerCase().replace(/\s+/g, ' ').trim();
+
+  const parseHex = (hex) => {
+    const valid = normalizeHex(hex);
+    if (!valid) return null;
+    return {
+      r: parseInt(valid.slice(1, 3), 16),
+      g: parseInt(valid.slice(3, 5), 16),
+      b: parseInt(valid.slice(5, 7), 16)
+    };
+  };
+
+  const rgbToHex = (r, g, b) => {
+    const part = (n) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, '0').toUpperCase();
+    return `#${part(r)}${part(g)}${part(b)}`;
+  };
+
+  const shiftHex = (hex, delta = 0) => {
+    const rgb = parseHex(hex);
+    if (!rgb) return '#CCCCCC';
+    return rgbToHex(rgb.r + delta, rgb.g + delta, rgb.b + delta);
+  };
+
+  const findButtonByText = (container, text) => qa('button', container).find((btn) => btn.textContent && btn.textContent.trim() === text) || null;
 
   const dom = {
-    roomPreview: q('[data-room-preview]'),
-    wallPreview: q('[data-wall-preview]'),
-    furniturePreview: q('[data-furniture-preview]'),
+    wallPreview: q('.wall-preview'),
+    splitButtonsWrap: q('.split-buttons'),
+    splitButtons: qa('.split-buttons button'),
+    colorInput: q('.color-input-group input[type="text"]'),
+    applyColorButton: findButtonByText(q('.color-input-group'), 'Применить цвет'),
 
-    sectionCountInput: q('[data-section-count]'),
-    sectionButtons: qa('[data-section-index]'),
+    generateSimilarBtn: findButtonByText(q('.matching-actions'), 'Генерировать похожие'),
+    generateContrastBtn: findButtonByText(q('.matching-actions'), 'Генерировать контрастные'),
+    similarList: q('.matching-results > div:first-child .color-result-list'),
+    contrastList: q('.matching-results > div:last-child .color-result-list'),
 
-    wallCodeInput: q('[data-wall-hex]'),
-    wallPicker: q('[data-wall-picker]'),
-    applyWallColorBtn: q('[data-apply-wall-color]'),
+    templateModal: q('#templateModal'),
+    openTemplateBtn: q('[data-open-template-modal]'),
+    closeTemplateBtn: q('[data-close-template-modal]'),
+    templateHost: q('.designer-templates details'),
 
-    furnitureCodeInput: q('[data-furniture-hex]'),
-    furniturePicker: q('[data-furniture-picker]'),
-    applyFurnitureColorBtn: q('[data-apply-furniture-color]'),
-
-    catalogSelect: q('[data-color-catalog]'),
-    catalogColorSelect: q('[data-catalog-color]'),
-    targetSelect: q('[data-color-target]'),
-    applyCatalogColorBtn: q('[data-apply-catalog-color]'),
-
-    templateSelect: q('[data-template-select]'),
-    applyTemplateBtn: q('[data-apply-template]'),
-
-    generateHarmonyBtn: q('[data-generate-harmony]'),
-    similarList: q('[data-similar-list]'),
-    contrastList: q('[data-contrast-list]')
+    lightingSection: q('.lighting-section'),
+    lightingControls: q('.lighting-controls'),
+    warmBtn: findButtonByText(q('.lighting-controls'), 'Теплое'),
+    coldBtn: findButtonByText(q('.lighting-controls'), 'Холодное'),
+    brightnessSlider: q('.lighting-controls input[type="range"]')
   };
 
   const state = {
-    sections: 1,
     activeSection: 0,
-    wallHexBySection: [DEFAULT_WALL_HEX, DEFAULT_WALL_HEX, DEFAULT_WALL_HEX, DEFAULT_WALL_HEX],
-    furnitureHex: DEFAULT_FURNITURE_HEX
+    sections: Math.max(1, Math.min(4, dom.splitButtons.length || 1)),
+    sectionColors: ['#D9D9D9', '#D9D9D9', '#D9D9D9', '#D9D9D9'],
+    lighting: {
+      mode: 'warm',
+      brightness: dom.brightnessSlider ? Number(dom.brightnessSlider.value || 50) : 50,
+      off: false
+    }
   };
 
-  function sanitizeHex(hex) {
-    if (typeof hex !== 'string') return null;
-    const value = hex.trim().toUpperCase();
-    return /^#[0-9A-F]{6}$/.test(value) ? value : null;
-  }
+  const getColorDb = () => {
+    if (typeof window === 'undefined' || !window.colorDatabase || typeof window.colorDatabase !== 'object') return {};
+    return window.colorDatabase;
+  };
 
-  function rgbToHsl(r, g, b) {
-    const nr = r / 255;
-    const ng = g / 255;
-    const nb = b / 255;
-    const max = Math.max(nr, ng, nb);
-    const min = Math.min(nr, ng, nb);
-    const d = max - min;
+  const getTemplates = () => {
+    if (typeof window === 'undefined' || !window.designerTemplates || typeof window.designerTemplates !== 'object') return {};
+    return window.designerTemplates;
+  };
 
-    let h = 0;
-    let s = 0;
-    const l = (max + min) / 2;
+  const resolveColorByCode = (rawInput) => {
+    const input = String(rawInput || '').trim();
+    if (!input) return null;
 
-    if (d !== 0) {
-      s = d / (1 - Math.abs(2 * l - 1));
-      if (max === nr) h = 60 * (((ng - nb) / d) % 6);
-      else if (max === ng) h = 60 * ((nb - nr) / d + 2);
-      else h = 60 * ((nr - ng) / d + 4);
+    const db = getColorDb();
+    const withCatalog = input.match(/^([^:]+):\s*(.+)$/);
+    const codeOnly = withCatalog ? withCatalog[2].trim() : input;
+
+    if (withCatalog) {
+      const catalogName = normalizeCatalog(withCatalog[1]);
+      const key = CATALOG_ALIASES[catalogName];
+      if (!key || !db[key]) return null;
+      const hex = normalizeHex(String(db[key][codeOnly] || ''));
+      return hex ? { code: codeOnly, hex, catalog: key } : null;
     }
 
-    if (h < 0) h += 360;
-    return { h, s: s * 100, l: l * 100 };
-  }
-
-  function hslToRgb(h, s, l) {
-    const ns = Math.max(0, Math.min(100, s)) / 100;
-    const nl = Math.max(0, Math.min(100, l)) / 100;
-    const c = (1 - Math.abs(2 * nl - 1)) * ns;
-    const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
-    const m = nl - c / 2;
-
-    let r1 = 0;
-    let g1 = 0;
-    let b1 = 0;
-
-    if (h < 60) {
-      r1 = c;
-      g1 = x;
-    } else if (h < 120) {
-      r1 = x;
-      g1 = c;
-    } else if (h < 180) {
-      g1 = c;
-      b1 = x;
-    } else if (h < 240) {
-      g1 = x;
-      b1 = c;
-    } else if (h < 300) {
-      r1 = x;
-      b1 = c;
-    } else {
-      r1 = c;
-      b1 = x;
-    }
-
-    return {
-      r: Math.round((r1 + m) * 255),
-      g: Math.round((g1 + m) * 255),
-      b: Math.round((b1 + m) * 255)
-    };
-  }
-
-  function hexToRgb(hex) {
-    const valid = sanitizeHex(hex);
-    if (!valid) return null;
-    const raw = valid.slice(1);
-    return {
-      r: parseInt(raw.slice(0, 2), 16),
-      g: parseInt(raw.slice(2, 4), 16),
-      b: parseInt(raw.slice(4, 6), 16)
-    };
-  }
-
-  function rgbToHex(r, g, b) {
-    const asHex = (n) => Math.max(0, Math.min(255, n)).toString(16).padStart(2, '0').toUpperCase();
-    return `#${asHex(r)}${asHex(g)}${asHex(b)}`;
-  }
-
-  function hexToHsl(hex) {
-    const rgb = hexToRgb(hex);
-    return rgb ? rgbToHsl(rgb.r, rgb.g, rgb.b) : null;
-  }
-
-  function hslToHex(h, s, l) {
-    const rgb = hslToRgb(((h % 360) + 360) % 360, s, l);
-    return rgbToHex(rgb.r, rgb.g, rgb.b);
-  }
-
-  function normalizeCatalogName(name) {
-    return String(name || '')
-      .toLowerCase()
-      .replace(/[_-]+/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-  }
-
-  function getCatalogMap() {
-    const raw = typeof window !== 'undefined' && window.colorDatabase && typeof window.colorDatabase === 'object'
-      ? window.colorDatabase
-      : {};
-
-    const result = {};
-    Object.entries(raw).forEach(([catalogName, catalog]) => {
-      if (!catalog || typeof catalog !== 'object') return;
-      const normalizedName = normalizeCatalogName(catalogName);
-      if (!SUPPORTED_CATALOGS.includes(normalizedName)) return;
-
-      const entries = [];
-      Object.entries(catalog).forEach(([code, hex]) => {
-        const validHex = sanitizeHex(String(hex));
-        if (!validHex) return;
-        entries.push({ code: String(code), hex: validHex });
-      });
-
-      if (entries.length > 0) {
-        result[normalizedName] = entries;
-      }
-    });
-
-    return result;
-  }
-
-  function findColorByCode(code, catalogName) {
-    const inputCode = String(code || '').trim().toLowerCase();
-    if (!inputCode) return null;
-
-    const catalogs = getCatalogMap();
-    const desiredCatalog = normalizeCatalogName(catalogName);
-
-    const tryFind = (entries, catalogKey) => {
-      if (!Array.isArray(entries)) return null;
-      const exact = entries.find((item) => item.code.toLowerCase() === inputCode);
-      return exact ? { ...exact, catalog: catalogKey } : null;
-    };
-
-    if (desiredCatalog && catalogs[desiredCatalog]) {
-      const found = tryFind(catalogs[desiredCatalog], desiredCatalog);
-      if (found) return found;
-    }
-
-    for (const [catalogKey, entries] of Object.entries(catalogs)) {
-      const found = tryFind(entries, catalogKey);
-      if (found) return found;
+    const catalogs = ['dulux', 'vision', 'iceparade', 'ral'];
+    for (let i = 0; i < catalogs.length; i += 1) {
+      const catalog = catalogs[i];
+      const source = db[catalog];
+      if (!source || typeof source !== 'object') continue;
+      const hex = normalizeHex(String(source[codeOnly] || ''));
+      if (hex) return { code: codeOnly, hex, catalog };
     }
 
     return null;
-  }
+  };
 
-  function buildWallGradient() {
-    const colors = state.wallHexBySection.slice(0, state.sections);
-    if (colors.length === 0) return DEFAULT_WALL_HEX;
-    if (colors.length === 1) return colors[0];
+  const renderWall = () => {
+    if (!dom.wallPreview) return;
+    const slice = state.sectionColors.slice(0, state.sections);
+    const gradient = slice.length === 1
+      ? slice[0]
+      : `linear-gradient(90deg, ${slice.map((hex, idx) => {
+          const start = (idx * 100) / state.sections;
+          const end = ((idx + 1) * 100) / state.sections;
+          return `${hex} ${start}%, ${hex} ${end}%`;
+        }).join(', ')})`;
+    dom.wallPreview.style.background = gradient;
+  };
 
-    const stops = [];
-    for (let i = 0; i < colors.length; i += 1) {
-      const position = (i / (colors.length - 1)) * 100;
-      stops.push(`${colors[i]} ${position.toFixed(2)}%`);
-    }
-
-    return `linear-gradient(90deg, ${stops.join(', ')})`;
-  }
-
-  function syncInputs() {
-    const activeWallHex = state.wallHexBySection[state.activeSection] || DEFAULT_WALL_HEX;
-
-    if (dom.wallPicker) dom.wallPicker.value = activeWallHex;
-    if (dom.furniturePicker) dom.furniturePicker.value = state.furnitureHex;
-
-    if (dom.wallCodeInput && document.activeElement !== dom.wallCodeInput) {
-      dom.wallCodeInput.value = dom.wallCodeInput.value || '';
-    }
-    if (dom.furnitureCodeInput && document.activeElement !== dom.furnitureCodeInput) {
-      dom.furnitureCodeInput.value = dom.furnitureCodeInput.value || '';
-    }
-  }
-
-  function renderSectionsUI() {
-    if (!Array.isArray(dom.sectionButtons)) return;
-
-    dom.sectionButtons.forEach((button) => {
-      if (!button) return;
-      const idx = Number(button.getAttribute('data-section-index'));
-      const enabled = Number.isInteger(idx) && idx >= 0 && idx < state.sections;
-      button.disabled = !enabled;
-      button.classList.toggle('is-active', idx === state.activeSection);
-      button.setAttribute('aria-pressed', idx === state.activeSection ? 'true' : 'false');
+  const renderActiveSection = () => {
+    dom.splitButtons.forEach((btn, idx) => {
+      const active = idx === state.activeSection;
+      btn.classList.toggle('is-active', active);
+      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
     });
-  }
+  };
 
-  function renderPreview() {
-    const wallGradient = buildWallGradient();
-
-    if (dom.wallPreview) dom.wallPreview.style.background = wallGradient;
-    if (dom.furniturePreview) dom.furniturePreview.style.background = state.furnitureHex;
-
-    if (dom.roomPreview) {
-      dom.roomPreview.style.setProperty('--wall-gradient', wallGradient);
-      dom.roomPreview.style.setProperty('--furniture-color', state.furnitureHex);
+  const applyLighting = () => {
+    if (!dom.wallPreview) return;
+    if (state.lighting.off) {
+      dom.wallPreview.style.filter = 'brightness(0.5) saturate(0.7)';
+      return;
     }
 
-    renderSectionsUI();
-    syncInputs();
-  }
+    const brightness = Math.max(0, Math.min(100, state.lighting.brightness));
+    const brightnessFactor = 0.7 + brightness / 100;
+    const warmShift = state.lighting.mode === 'warm' ? 'sepia(0.25) hue-rotate(-10deg)' : 'sepia(0.05) hue-rotate(8deg)';
+    dom.wallPreview.style.filter = `brightness(${brightnessFactor}) ${warmShift}`;
+  };
 
-  function applyColorHex(target, hex, sectionIndex = state.activeSection) {
-    const validHex = sanitizeHex(hex);
-    if (!validHex) return false;
+  const logApplied = (payload) => {
+    console.log('COLOR APPLIED', payload);
+  };
 
-    if (target === 'furniture') {
-      state.furnitureHex = validHex;
-    } else {
-      const idx = Math.max(0, Math.min(3, Number(sectionIndex) || 0));
-      state.wallHexBySection[idx] = validHex;
-      state.activeSection = idx;
-    }
+  const applyColor = ({ code, hex, section }) => {
+    const validHex = normalizeHex(hex);
+    if (!validHex) return;
+    const targetSection = Math.max(0, Math.min(state.sections - 1, Number(section)));
+    state.sectionColors[targetSection] = validHex;
+    state.activeSection = targetSection;
+    renderActiveSection();
+    renderWall();
+    applyLighting();
+    logApplied({ code: code || 'manual', hex: validHex, section: targetSection + 1 });
+  };
 
-    renderPreview();
-    console.log('COLOR APPLIED', { target, hex: validHex, sectionIndex });
-    return true;
-  }
-
-  function applyByCode(target, code, catalogName) {
-    const found = findColorByCode(code, catalogName);
-    if (!found) return false;
-    return applyColorHex(target, found.hex, state.activeSection);
-  }
-
-  function setSections(count) {
-    const safeCount = Math.max(1, Math.min(4, Number(count) || 1));
-    state.sections = safeCount;
-    if (state.activeSection > safeCount - 1) {
-      state.activeSection = safeCount - 1;
-    }
-    renderPreview();
-  }
-
-  function fillCatalogSelects() {
-    const catalogs = getCatalogMap();
-
-    if (dom.catalogSelect) {
-      dom.catalogSelect.innerHTML = '';
-      const empty = document.createElement('option');
-      empty.value = '';
-      empty.textContent = 'Выберите базу';
-      dom.catalogSelect.appendChild(empty);
-
-      SUPPORTED_CATALOGS.forEach((name) => {
-        if (!catalogs[name]) return;
-        const option = document.createElement('option');
-        option.value = name;
-        option.textContent = name;
-        dom.catalogSelect.appendChild(option);
-      });
-
-      if (dom.catalogSelect.options.length > 1) dom.catalogSelect.selectedIndex = 1;
-    }
-
-    updateCatalogColorOptions();
-  }
-
-  function updateCatalogColorOptions() {
-    if (!dom.catalogColorSelect) return;
-
-    const catalogs = getCatalogMap();
-    const selectedCatalog = normalizeCatalogName(dom.catalogSelect ? dom.catalogSelect.value : '');
-    const colors = catalogs[selectedCatalog] || [];
-
-    dom.catalogColorSelect.innerHTML = '';
-
-    const empty = document.createElement('option');
-    empty.value = '';
-    empty.textContent = 'Выберите цвет';
-    dom.catalogColorSelect.appendChild(empty);
-
-    colors.forEach((entry) => {
-      const option = document.createElement('option');
-      option.value = entry.code;
-      option.textContent = `${entry.code}`;
-      dom.catalogColorSelect.appendChild(option);
+  const createSuggestionBlock = (hex) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = hex;
+    btn.style.background = hex;
+    btn.style.border = '1px solid rgba(0,0,0,0.2)';
+    btn.style.padding = '8px';
+    btn.style.cursor = 'pointer';
+    btn.style.marginRight = '6px';
+    btn.style.marginBottom = '6px';
+    btn.addEventListener('click', () => {
+      applyColor({ code: 'generated', hex, section: state.activeSection });
     });
-  }
+    return btn;
+  };
 
-  function getTemplates() {
-    const source = typeof window !== 'undefined' && window.designerTemplates && typeof window.designerTemplates === 'object'
-      ? window.designerTemplates
-      : {};
-
-    const templates = [];
-    Object.entries(source).forEach(([key, template]) => {
-      if (!template || typeof template !== 'object') return;
-      const main = sanitizeHex(String(template.main || ''));
-      const secondary = sanitizeHex(String(template.secondary || ''));
-      const accent = sanitizeHex(String(template.accent || ''));
-      if (!main || !secondary || !accent) return;
-      templates.push({
-        key,
-        label: String(template.name || key),
-        main,
-        secondary,
-        accent,
-        accentTarget: String(template.accentTarget || 'furniture').toLowerCase()
-      });
+  const renderSuggestions = (container, list) => {
+    if (!container) return;
+    container.innerHTML = '';
+    list.forEach((hex) => {
+      container.appendChild(createSuggestionBlock(hex));
     });
+  };
 
-    return templates;
-  }
+  const generateSimilar = () => {
+    const base = state.sectionColors[state.activeSection] || '#D9D9D9';
+    const colors = [shiftHex(base, 15), shiftHex(base, 30), shiftHex(base, -10), shiftHex(base, -25)];
+    renderSuggestions(dom.similarList, colors);
+    console.log('SIMILAR GENERATED', { type: 'similar', base, count: colors.length });
+  };
 
-  function fillTemplatesSelect() {
-    if (!dom.templateSelect) return;
+  const generateContrast = () => {
+    const base = parseHex(state.sectionColors[state.activeSection] || '#D9D9D9');
+    if (!base) return;
+    const inv = rgbToHex(255 - base.r, 255 - base.g, 255 - base.b);
+    const colors = [inv, shiftHex(inv, 20), shiftHex(inv, -20)];
+    renderSuggestions(dom.contrastList, colors);
+    console.log('SIMILAR GENERATED', { type: 'contrast', base: state.sectionColors[state.activeSection], count: colors.length });
+  };
 
-    dom.templateSelect.innerHTML = '';
-    const empty = document.createElement('option');
-    empty.value = '';
-    empty.textContent = 'Выберите шаблон';
-    dom.templateSelect.appendChild(empty);
+  const applyTemplate = (templateKey) => {
+    const templates = getTemplates();
+    const tpl = templates[templateKey];
+    if (!tpl) return;
 
-    getTemplates().forEach((template) => {
-      const option = document.createElement('option');
-      option.value = template.key;
-      option.textContent = template.label;
-      dom.templateSelect.appendChild(option);
-    });
-  }
+    const main = normalizeHex(String(tpl.main || ''));
+    const secondary = normalizeHex(String(tpl.secondary || ''));
+    const accent = normalizeHex(String(tpl.accent || ''));
+    if (!main || !secondary || !accent) return;
 
-  function applyTemplate(templateKey) {
-    const template = getTemplates().find((item) => item.key === templateKey);
-    if (!template) return false;
+    state.sections = Math.max(1, Math.min(4, dom.splitButtons.length || 4));
+    const total = state.sections;
+    const mainCount = Math.max(1, Math.round(total * 0.6));
+    const secondaryCount = Math.max(1, Math.round(total * 0.3));
+    let accentCount = Math.max(1, total - mainCount - secondaryCount);
 
-    state.wallHexBySection[0] = template.main;
-    state.wallHexBySection[1] = template.main;
-    state.wallHexBySection[2] = template.secondary;
+    let idx = 0;
+    for (; idx < mainCount && idx < total; idx += 1) state.sectionColors[idx] = main;
+    for (let j = 0; j < secondaryCount && idx < total; j += 1, idx += 1) state.sectionColors[idx] = secondary;
+    for (let k = 0; k < accentCount && idx < total; k += 1, idx += 1) state.sectionColors[idx] = accent;
 
-    if (template.accentTarget === 'wall') {
-      state.sections = 4;
-      state.wallHexBySection[3] = template.accent;
-    } else {
-      state.sections = 3;
-      state.furnitureHex = template.accent;
+    while (idx < total) {
+      state.sectionColors[idx] = accent;
+      idx += 1;
     }
 
     state.activeSection = 0;
-    renderPreview();
-    console.log('COLOR APPLIED', { target: 'template', template: template.key });
-    return true;
-  }
+    renderActiveSection();
+    renderWall();
+    applyLighting();
+    console.log('TEMPLATE APPLIED', { template: templateKey, rule: '60/30/10', colors: { main, secondary, accent } });
+  };
 
-  function renderSuggestionList(listElement, colors) {
-    if (!listElement) return;
-    listElement.innerHTML = '';
+  const setupTemplateUi = () => {
+    const templates = getTemplates();
+    const keys = Object.keys(templates);
+    if (!dom.templateHost || keys.length === 0) return;
 
-    colors.forEach((hex) => {
-      const li = document.createElement('li');
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'palette-color';
-      button.textContent = hex;
-      button.style.background = hex;
-      button.style.border = '1px solid rgba(0, 0, 0, 0.2)';
-      button.style.color = '#1a1a1a';
-      button.style.padding = '4px 8px';
-      button.style.cursor = 'pointer';
+    const list = document.createElement('div');
+    list.setAttribute('data-template-list', 'true');
 
-      button.addEventListener('click', () => {
-        applyColorHex('wall', hex, state.activeSection);
-      });
-
-      li.appendChild(button);
-      listElement.appendChild(li);
+    keys.forEach((key) => {
+      const item = templates[key];
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = item && item.name ? item.name : key;
+      btn.style.marginRight = '8px';
+      btn.style.marginTop = '8px';
+      btn.addEventListener('click', () => applyTemplate(key));
+      list.appendChild(btn);
     });
-  }
 
-  function generateSuggestions() {
-    const baseHex = state.wallHexBySection[state.activeSection] || state.furnitureHex;
-    const baseHsl = hexToHsl(baseHex);
-    if (!baseHsl) return;
+    dom.templateHost.appendChild(list);
+  };
 
-    const similar = [
-      hslToHex(baseHsl.h - 18, baseHsl.s, Math.min(95, baseHsl.l + 5)),
-      hslToHex(baseHsl.h - 8, baseHsl.s, baseHsl.l),
-      hslToHex(baseHsl.h + 8, baseHsl.s, baseHsl.l),
-      hslToHex(baseHsl.h + 18, baseHsl.s, Math.max(10, baseHsl.l - 5))
-    ];
+  const bindEvents = () => {
+    dom.splitButtons.forEach((btn, idx) => {
+      btn.addEventListener('click', () => {
+        state.activeSection = idx;
+        renderActiveSection();
+      });
+    });
 
-    const contrast = [
-      hslToHex(baseHsl.h + 180, baseHsl.s, baseHsl.l),
-      hslToHex(baseHsl.h + 150, Math.min(100, baseHsl.s + 10), baseHsl.l),
-      hslToHex(baseHsl.h + 210, Math.max(0, baseHsl.s - 10), baseHsl.l)
-    ];
-
-    renderSuggestionList(dom.similarList, similar);
-    renderSuggestionList(dom.contrastList, contrast);
-    console.log('SIMILAR GENERATED', { baseHex, similarCount: similar.length, contrastCount: contrast.length });
-  }
-
-  function bindEvents() {
-    if (dom.sectionCountInput) {
-      dom.sectionCountInput.addEventListener('input', (event) => {
-        setSections(event && event.target ? event.target.value : 1);
+    if (dom.applyColorButton) {
+      dom.applyColorButton.addEventListener('click', () => {
+        const input = dom.colorInput ? dom.colorInput.value : '';
+        const found = resolveColorByCode(input);
+        if (!found) return;
+        applyColor({ code: `${found.catalog}:${found.code}`, hex: found.hex, section: state.activeSection });
       });
     }
 
-    if (Array.isArray(dom.sectionButtons)) {
-      dom.sectionButtons.forEach((button) => {
-        if (!button) return;
-        button.addEventListener('click', () => {
-          const idx = Number(button.getAttribute('data-section-index'));
-          if (!Number.isInteger(idx) || idx < 0 || idx >= state.sections) return;
-          state.activeSection = idx;
-          renderPreview();
-        });
+    if (dom.generateSimilarBtn) dom.generateSimilarBtn.addEventListener('click', generateSimilar);
+    if (dom.generateContrastBtn) dom.generateContrastBtn.addEventListener('click', generateContrast);
+
+    if (dom.openTemplateBtn && dom.templateModal && typeof dom.templateModal.showModal === 'function') {
+      dom.openTemplateBtn.addEventListener('click', () => dom.templateModal.showModal());
+    }
+    if (dom.closeTemplateBtn && dom.templateModal && typeof dom.templateModal.close === 'function') {
+      dom.closeTemplateBtn.addEventListener('click', () => dom.templateModal.close());
+    }
+
+    if (dom.warmBtn) {
+      dom.warmBtn.addEventListener('click', () => {
+        state.lighting.mode = 'warm';
+        state.lighting.off = false;
+        applyLighting();
       });
     }
 
-    if (dom.wallPicker) {
-      dom.wallPicker.addEventListener('input', (event) => {
-        const hex = event && event.target ? event.target.value : '';
-        applyColorHex('wall', hex, state.activeSection);
+    if (dom.coldBtn) {
+      dom.coldBtn.addEventListener('click', () => {
+        state.lighting.mode = 'cold';
+        state.lighting.off = false;
+        applyLighting();
       });
     }
 
-    if (dom.furniturePicker) {
-      dom.furniturePicker.addEventListener('input', (event) => {
-        const hex = event && event.target ? event.target.value : '';
-        applyColorHex('furniture', hex);
+    if (dom.brightnessSlider) {
+      dom.brightnessSlider.addEventListener('input', (event) => {
+        state.lighting.brightness = Number(event && event.target ? event.target.value : state.lighting.brightness);
+        state.lighting.off = false;
+        applyLighting();
       });
     }
 
-    if (dom.applyWallColorBtn) {
-      dom.applyWallColorBtn.addEventListener('click', () => {
-        const code = dom.wallCodeInput ? dom.wallCodeInput.value : '';
-        const catalog = dom.catalogSelect ? dom.catalogSelect.value : '';
-        if (!applyByCode('wall', code, catalog) && dom.wallPicker) {
-          applyColorHex('wall', dom.wallPicker.value, state.activeSection);
-        }
+    if (dom.lightingControls) {
+      const offBtn = document.createElement('button');
+      offBtn.type = 'button';
+      offBtn.textContent = 'Выключить свет';
+      offBtn.addEventListener('click', () => {
+        state.lighting.off = true;
+        applyLighting();
       });
+      dom.lightingControls.appendChild(offBtn);
     }
+  };
 
-    if (dom.applyFurnitureColorBtn) {
-      dom.applyFurnitureColorBtn.addEventListener('click', () => {
-        const code = dom.furnitureCodeInput ? dom.furnitureCodeInput.value : '';
-        const catalog = dom.catalogSelect ? dom.catalogSelect.value : '';
-        if (!applyByCode('furniture', code, catalog) && dom.furniturePicker) {
-          applyColorHex('furniture', dom.furniturePicker.value);
-        }
-      });
-    }
-
-    if (dom.catalogSelect) {
-      dom.catalogSelect.addEventListener('change', updateCatalogColorOptions);
-    }
-
-    if (dom.applyCatalogColorBtn) {
-      dom.applyCatalogColorBtn.addEventListener('click', () => {
-        const catalog = dom.catalogSelect ? dom.catalogSelect.value : '';
-        const codeFromSelect = dom.catalogColorSelect ? dom.catalogColorSelect.value : '';
-        const target = dom.targetSelect ? dom.targetSelect.value : 'wall';
-
-        if (!applyByCode(target === 'furniture' ? 'furniture' : 'wall', codeFromSelect, catalog)) {
-          return;
-        }
-      });
-    }
-
-    if (dom.applyTemplateBtn) {
-      dom.applyTemplateBtn.addEventListener('click', () => {
-        const key = dom.templateSelect ? dom.templateSelect.value : '';
-        applyTemplate(key);
-      });
-    }
-
-    if (dom.generateHarmonyBtn) {
-      dom.generateHarmonyBtn.addEventListener('click', generateSuggestions);
-    }
-  }
-
-  function initInputPlaceholders() {
-    if (dom.wallCodeInput) dom.wallCodeInput.placeholder = 'Введите цвет';
-    if (dom.furnitureCodeInput) dom.furnitureCodeInput.placeholder = 'Введите цвет';
-  }
-
-  function init() {
-    initInputPlaceholders();
-    fillCatalogSelects();
-    fillTemplatesSelect();
+  const init = () => {
+    renderActiveSection();
+    renderWall();
+    applyLighting();
+    setupTemplateUi();
     bindEvents();
-    renderPreview();
     console.log('INIT OK');
-  }
+  };
 
   if (typeof document !== 'undefined') {
     if (document.readyState === 'loading') {
