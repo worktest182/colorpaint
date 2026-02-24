@@ -244,11 +244,6 @@
     btn.type = 'button';
     btn.textContent = `${entry.catalog.toUpperCase()} ${entry.code} · ${entry.hex}`;
     btn.style.background = entry.hex;
-    btn.style.border = '1px solid rgba(0,0,0,0.25)';
-    btn.style.padding = '8px';
-    btn.style.cursor = 'pointer';
-    btn.style.marginRight = '6px';
-    btn.style.marginBottom = '6px';
     btn.style.color = '#111827';
     btn.addEventListener('click', () => {
       applyColor({ code: `${entry.catalog}:${entry.code}`, hex: entry.hex, section: state.activeSection });
@@ -277,7 +272,8 @@
 
     return palette
       .map((entry) => {
-        const targetHue = (baseHsl.h + offsets[Math.floor(Math.random() * offsets.length)] + 360) % 360;
+        const offset = offsets[(state.generationTick + entry.code.length) % offsets.length];
+        const targetHue = (baseHsl.h + offset + 360) % 360;
         const hueScore = hueDistance(entry.hsl.h, targetHue);
         const satScore = Math.abs(entry.hsl.s - baseHsl.s) * (mode === 'similar' ? 80 : 35);
         const lightScore = Math.abs(entry.hsl.l - baseHsl.l) * (mode === 'similar' ? 70 : 45);
