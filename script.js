@@ -1,623 +1,548 @@
+(() => {
+  'use strict';
 
-@@ -0,0 +1,620 @@
-+(() => {
-+  'use strict';
-+
-+  // ==========================================================
-+  // Safety wrappers for optional globals
-+  // ==========================================================
-+  const safeColorDatabase =
-+    typeof window !== 'undefined' && window.colorDatabase && typeof window.colorDatabase === 'object'
-+      ? window.colorDatabase
-+      : {};
-+
-+  const safeDesignerTemplates =
-+    typeof window !== 'undefined' && window.designerTemplates && typeof window.designerTemplates === 'object'
-+      ? window.designerTemplates
-+      : {};
-+
-+  const DEFAULT_WALL_COLOR = '#d9d9d9';
-+  const DEFAULT_FURNITURE_COLOR = '#8c8c8c';
-+
-+  const state = {
-+    wallSections: 1,
-+    activeSection: 0,
-+    wallColors: [DEFAULT_WALL_COLOR, DEFAULT_WALL_COLOR, DEFAULT_WALL_COLOR, DEFAULT_WALL_COLOR],
-+    furnitureColor: DEFAULT_FURNITURE_COLOR,
-+    lightOn: true,
-+    lightTemperature: 50, // 0 = warm, 100 = cold
-+    suggestions: {
-+      similar: [],
-+      contrast: [],
-+      monochrome: []
-+    }
-+  };
-+
-+  // ==========================================================
-+  // DOM helpers (null-safe)
-+  // ==========================================================
-+  const q = (sel) => (typeof document !== 'undefined' ? document.querySelector(sel) : null);
-+  const qa = (sel) => (typeof document !== 'undefined' ? Array.from(document.querySelectorAll(sel)) : []);
-+
-+  const dom = {
-+    roomPreview: q('[data-room-preview]') || q('#roomPreview') || q('.room-preview'),
-+    wallPreview: q('[data-wall-preview]') || q('#wallPreview') || q('.wall-preview'),
-+    furniturePreview: q('[data-furniture-preview]') || q('#furniturePreview') || q('.furniture-preview'),
-+
-+    sectionCountInput: q('[data-section-count]') || q('#sectionCount'),
-+    sectionButtons: qa('[data-section-index]'),
-+
-+    wallHexInput: q('[data-wall-hex]') || q('#wallHex'),
-+    wallPicker: q('[data-wall-picker]') || q('#wallPicker') || q('input[type="color"][name="wallColor"]'),
-+    furnitureHexInput: q('[data-furniture-hex]') || q('#furnitureHex'),
-+    furniturePicker: q('[data-furniture-picker]') || q('#furniturePicker') || q('input[type="color"][name="furnitureColor"]'),
-+
-+    applyWallColorBtn: q('[data-apply-wall-color]') || q('#applyWallColor'),
-+    applyFurnitureColorBtn: q('[data-apply-furniture-color]') || q('#applyFurnitureColor'),
-+
-+    catalogSelect: q('[data-color-catalog]') || q('#colorCatalog'),
-+    catalogColorSelect: q('[data-catalog-color]') || q('#catalogColor'),
-+    applyCatalogColorBtn: q('[data-apply-catalog-color]') || q('#applyCatalogColor'),
-+    targetSelect: q('[data-color-target]') || q('#colorTarget'),
-+
-+    templateSelect: q('[data-template-select]') || q('#templateSelect'),
-+    applyTemplateBtn: q('[data-apply-template]') || q('#applyTemplate'),
-+
-+    similarList: q('[data-similar-list]') || q('#similarColors'),
-+    contrastList: q('[data-contrast-list]') || q('#contrastColors'),
-+    monochromeList: q('[data-monochrome-list]') || q('#monochromeColors'),
-+    generateHarmonyBtn: q('[data-generate-harmony]') || q('#generateHarmony'),
-+
-+    lightToggle: q('[data-light-toggle]') || q('#lightToggle'),
-+    lightTemperature: q('[data-light-temperature]') || q('#lightTemperature'),
-+    lightModeText: q('[data-light-mode]') || q('#lightMode')
-+  };
-+
-+  // ==========================================================
-+  // Color math
-+  // ==========================================================
-+  function normalizeHex(input) {
-+    if (typeof input !== 'string') return null;
-+    let hex = input.trim().toUpperCase();
-+    if (!hex) return null;
-+
-+    if (!hex.startsWith('#')) hex = `#${hex}`;
-+    if (/^#[0-9A-F]{3}$/.test(hex)) {
-+      hex = `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}`;
-+    }
-+
-+    return /^#[0-9A-F]{6}$/.test(hex) ? hex : null;
-+  }
-+
-+  function hexToRgb(hex) {
-+    const normalized = normalizeHex(hex);
-+    if (!normalized) return null;
-+    const value = normalized.slice(1);
-+    return {
-+      r: parseInt(value.slice(0, 2), 16),
-+      g: parseInt(value.slice(2, 4), 16),
-+      b: parseInt(value.slice(4, 6), 16)
-+    };
-+  }
-+
-+  function rgbToHex(r, g, b) {
-+    const toHex = (n) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, '0').toUpperCase();
-+    return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
-+  }
-+
-+  function rgbToHsl(r, g, b) {
-+    const nr = r / 255;
-+    const ng = g / 255;
-+    const nb = b / 255;
-+    const max = Math.max(nr, ng, nb);
-+    const min = Math.min(nr, ng, nb);
-+    const d = max - min;
-+
-+    let h = 0;
-+    const l = (max + min) / 2;
-+    let s = 0;
-+
-+    if (d !== 0) {
-+      s = d / (1 - Math.abs(2 * l - 1));
-+      switch (max) {
-+        case nr:
-+          h = 60 * (((ng - nb) / d) % 6);
-+          break;
-+        case ng:
-+          h = 60 * ((nb - nr) / d + 2);
-+          break;
-+        case nb:
-+          h = 60 * ((nr - ng) / d + 4);
-+          break;
-+      }
-+    }
-+
-+    if (h < 0) h += 360;
-+
-+    return { h, s: s * 100, l: l * 100 };
-+  }
-+
-+  function hslToRgb(h, s, l) {
-+    const ns = Math.max(0, Math.min(100, s)) / 100;
-+    const nl = Math.max(0, Math.min(100, l)) / 100;
-+    const c = (1 - Math.abs(2 * nl - 1)) * ns;
-+    const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
-+    const m = nl - c / 2;
-+
-+    let r1 = 0;
-+    let g1 = 0;
-+    let b1 = 0;
-+
-+    if (h >= 0 && h < 60) {
-+      r1 = c;
-+      g1 = x;
-+    } else if (h < 120) {
-+      r1 = x;
-+      g1 = c;
-+    } else if (h < 180) {
-+      g1 = c;
-+      b1 = x;
-+    } else if (h < 240) {
-+      g1 = x;
-+      b1 = c;
-+    } else if (h < 300) {
-+      r1 = x;
-+      b1 = c;
-+    } else {
-+      r1 = c;
-+      b1 = x;
-+    }
-+
-+    return {
-+      r: (r1 + m) * 255,
-+      g: (g1 + m) * 255,
-+      b: (b1 + m) * 255
-+    };
-+  }
-+
-+  function hexToHsl(hex) {
-+    const rgb = hexToRgb(hex);
-+    if (!rgb) return null;
-+    return rgbToHsl(rgb.r, rgb.g, rgb.b);
-+  }
-+
-+  function hslToHex(h, s, l) {
-+    const rgb = hslToRgb((h + 360) % 360, s, l);
-+    return rgbToHex(rgb.r, rgb.g, rgb.b);
-+  }
-+
-+  // ==========================================================
-+  // Rendering
-+  // ==========================================================
-+  function buildWallGradient() {
-+    const activeColors = state.wallColors.slice(0, state.wallSections);
-+    if (!activeColors.length) return DEFAULT_WALL_COLOR;
-+
-+    const step = 100 / activeColors.length;
-+    const parts = activeColors.flatMap((color, i) => {
-+      const start = (i * step).toFixed(2);
-+      const end = ((i + 1) * step).toFixed(2);
-+      return [`${color} ${start}%`, `${color} ${end}%`];
-+    });
-+
-+    return `linear-gradient(90deg, ${parts.join(', ')})`;
-+  }
-+
-+  function renderWallSectionsButtons() {
-+    if (!dom.sectionButtons || dom.sectionButtons.length === 0) return;
-+
-+    dom.sectionButtons.forEach((btn) => {
-+      if (!btn) return;
-+      const idx = Number(btn.getAttribute('data-section-index'));
-+      const enabled = idx >= 0 && idx < state.wallSections;
-+
-+      btn.disabled = !enabled;
-+      btn.classList.toggle('is-active', idx === state.activeSection);
-+      btn.style.opacity = enabled ? '1' : '0.4';
-+    });
-+  }
-+
-+  function renderPreviews() {
-+    if (dom.wallPreview) {
-+      dom.wallPreview.style.background = buildWallGradient();
-+    }
-+
-+    if (dom.furniturePreview) {
-+      dom.furniturePreview.style.backgroundColor = state.furnitureColor;
-+    }
-+
-+    if (dom.roomPreview) {
-+      dom.roomPreview.style.setProperty('--wall-gradient', buildWallGradient());
-+      dom.roomPreview.style.setProperty('--furniture-color', state.furnitureColor);
-+    }
-+
-+    if (dom.wallPicker) dom.wallPicker.value = state.wallColors[state.activeSection] || DEFAULT_WALL_COLOR;
-+    if (dom.wallHexInput) dom.wallHexInput.value = state.wallColors[state.activeSection] || DEFAULT_WALL_COLOR;
-+
-+    if (dom.furniturePicker) dom.furniturePicker.value = state.furnitureColor;
-+    if (dom.furnitureHexInput) dom.furnitureHexInput.value = state.furnitureColor;
-+
-+    renderWallSectionsButtons();
-+    renderLight();
-+  }
-+
-+  function renderLight() {
-+    const t = state.lightTemperature;
-+    const warmColor = `rgba(255, 214, 170, ${(100 - t) / 200})`;
-+    const coldColor = `rgba(190, 225, 255, ${t / 200})`;
-+
-+    if (dom.roomPreview) {
-+      dom.roomPreview.style.boxShadow = state.lightOn
-+        ? `inset 0 0 180px ${warmColor}, inset 0 0 140px ${coldColor}`
-+        : 'none';
-+      dom.roomPreview.style.filter = state.lightOn ? 'brightness(1)' : 'brightness(0.7)';
-+    }
-+
-+    if (dom.lightModeText) {
-+      if (!state.lightOn) {
-+        dom.lightModeText.textContent = 'Свет выключен';
-+      } else {
-+        dom.lightModeText.textContent = t < 50 ? 'Тёплый свет' : t > 50 ? 'Холодный свет' : 'Нейтральный свет';
-+      }
-+    }
-+  }
-+
-+  function renderPalette(listElement, colors) {
-+    if (!listElement) return;
-+    listElement.innerHTML = '';
-+
-+    colors.forEach((hex) => {
-+      const btn = document.createElement('button');
-+      btn.type = 'button';
-+      btn.className = 'palette-color';
-+      btn.title = hex;
-+      btn.textContent = hex;
-+      btn.style.background = hex;
-+      btn.style.color = '#111';
-+      btn.style.border = '1px solid rgba(0,0,0,0.2)';
-+      btn.style.margin = '2px';
-+      btn.style.padding = '4px 8px';
-+      btn.style.cursor = 'pointer';
-+
-+      btn.addEventListener('click', () => {
-+        applyColor(hex, 'wall', state.activeSection);
-+      });
-+
-+      listElement.appendChild(btn);
-+    });
-+  }
-+
-+  // ==========================================================
-+  // Core actions
-+  // ==========================================================
-+  function applyColor(rawHex, target = 'wall', wallSectionIndex = state.activeSection) {
-+    const hex = normalizeHex(rawHex);
-+    if (!hex) return false;
-+
-+    if (target === 'furniture') {
-+      state.furnitureColor = hex;
-+    } else {
-+      const idx = Math.max(0, Math.min(3, Number(wallSectionIndex) || 0));
-+      state.wallColors[idx] = hex;
-+      state.activeSection = idx;
-+    }
-+
-+    renderPreviews();
-+    console.log('COLOR APPLIED', { target, hex, section: wallSectionIndex });
-+    return true;
-+  }
-+
-+  function setWallSections(count) {
-+    const next = Math.max(1, Math.min(4, Number(count) || 1));
-+    state.wallSections = next;
-+
-+    if (state.activeSection >= next) {
-+      state.activeSection = next - 1;
-+    }
-+
-+    renderPreviews();
-+  }
-+
-+  function getCatalogs() {
-+    const raw = safeColorDatabase;
-+    const maybeCatalogs = raw.catalogs && typeof raw.catalogs === 'object' ? raw.catalogs : raw;
-+
-+    const out = {};
-+    Object.entries(maybeCatalogs).forEach(([name, value]) => {
-+      if (value && typeof value === 'object') {
-+        out[name] = value;
-+      }
-+    });
-+
-+    return out;
-+  }
-+
-+  function fillCatalogUI() {
-+    const catalogs = getCatalogs();
-+    if (dom.catalogSelect) {
-+      dom.catalogSelect.innerHTML = '';
-+      Object.keys(catalogs).forEach((name) => {
-+        const opt = document.createElement('option');
-+        opt.value = name;
-+        opt.textContent = name;
-+        dom.catalogSelect.appendChild(opt);
-+      });
-+    }
-+
-+    updateCatalogColors();
-+  }
-+
-+  function updateCatalogColors() {
-+    if (!dom.catalogColorSelect) return;
-+
-+    const catalogs = getCatalogs();
-+    const catalogName = dom.catalogSelect ? dom.catalogSelect.value : Object.keys(catalogs)[0];
-+    const catalog = catalogName ? catalogs[catalogName] : null;
-+
-+    dom.catalogColorSelect.innerHTML = '';
-+
-+    if (!catalog) return;
-+
-+    Object.entries(catalog).forEach(([name, hex]) => {
-+      const valid = normalizeHex(String(hex));
-+      if (!valid) return;
-+
-+      const opt = document.createElement('option');
-+      opt.value = valid;
-+      opt.textContent = `${name} (${valid})`;
-+      dom.catalogColorSelect.appendChild(opt);
-+    });
-+  }
-+
-+  function getTemplates() {
-+    return safeDesignerTemplates.templates && typeof safeDesignerTemplates.templates === 'object'
-+      ? safeDesignerTemplates.templates
-+      : safeDesignerTemplates;
-+  }
-+
-+  function fillTemplateUI() {
-+    if (!dom.templateSelect) return;
-+
-+    const templates = getTemplates();
-+    dom.templateSelect.innerHTML = '';
-+
-+    Object.keys(templates).forEach((name) => {
-+      const t = templates[name];
-+      if (!t || typeof t !== 'object') return;
-+
-+      const opt = document.createElement('option');
-+      opt.value = name;
-+      opt.textContent = name;
-+      dom.templateSelect.appendChild(opt);
-+    });
-+  }
-+
-+  function applyDesignerTemplate(templateName) {
-+    const templates = getTemplates();
-+    const template = templates[templateName];
-+    if (!template || typeof template !== 'object') return false;
-+
-+    const primary = normalizeHex(template.primary || template.main || template.base || '');
-+    const secondary = normalizeHex(template.secondary || template.second || '');
-+    const accent = normalizeHex(template.accent || '');
-+
-+    const ratio = {
-+      main: Number(template.mainPercent ?? template.main ?? 60) || 60,
-+      secondary: Number(template.secondaryPercent ?? template.secondaryRatio ?? 30) || 30,
-+      accent: Number(template.accentPercent ?? template.accentRatio ?? 10) || 10
-+    };
-+
-+    // 60 / 30 / 10 interpretation:
-+    // - main -> most wall sections
-+    // - secondary -> one wall section
-+    // - accent -> furniture OR extra wall section
-+    if (primary) {
-+      state.wallColors[0] = primary;
-+      state.wallColors[1] = primary;
-+    }
-+
-+    if (secondary) {
-+      state.wallColors[2] = secondary;
-+    }
-+
-+    const accentTarget = (template.accentTarget || '').toLowerCase();
-+    const accentToFurniture = accentTarget === 'furniture' || ratio.accent <= 10;
-+
-+    if (accent) {
-+      if (accentToFurniture) {
-+        state.furnitureColor = accent;
-+      } else {
-+        state.wallColors[3] = accent;
-+      }
-+    }
-+
-+    state.wallSections = accentToFurniture ? 3 : 4;
-+    state.activeSection = 0;
-+    renderPreviews();
-+
-+    return true;
-+  }
-+
-+  function generateHarmonyPalette(baseHex) {
-+    const base = hexToHsl(baseHex);
-+    if (!base) return null;
-+
-+    const similar = [
-+      hslToHex(base.h - 20, Math.min(100, base.s + 5), Math.min(90, base.l + 4)),
-+      hslToHex(base.h - 10, base.s, base.l),
-+      hslToHex(base.h + 10, base.s, base.l),
-+      hslToHex(base.h + 20, Math.max(0, base.s - 5), Math.max(10, base.l - 4))
-+    ];
-+
-+    const contrast = [
-+      hslToHex(base.h + 180, base.s, base.l),
-+      hslToHex(base.h + 150, Math.min(100, base.s + 10), base.l),
-+      hslToHex(base.h + 210, Math.max(0, base.s - 10), base.l)
-+    ];
-+
-+    const monochrome = [
-+      hslToHex(base.h, base.s, Math.min(95, base.l + 20)),
-+      hslToHex(base.h, base.s, Math.min(95, base.l + 10)),
-+      hslToHex(base.h, base.s, Math.max(5, base.l - 10)),
-+      hslToHex(base.h, base.s, Math.max(5, base.l - 20))
-+    ];
-+
-+    state.suggestions = { similar, contrast, monochrome };
-+    console.log('SIMILAR GENERATED', { baseHex, similarCount: similar.length });
-+    return state.suggestions;
-+  }
-+
-+  // ==========================================================
-+  // Event binding
-+  // ==========================================================
-+  function bindEvents() {
-+    if (dom.sectionCountInput) {
-+      dom.sectionCountInput.addEventListener('input', (e) => {
-+        setWallSections(e.target.value);
-+      });
-+    }
-+
-+    if (dom.sectionButtons && dom.sectionButtons.length) {
-+      dom.sectionButtons.forEach((btn) => {
-+        if (!btn) return;
-+        btn.addEventListener('click', () => {
-+          const idx = Number(btn.getAttribute('data-section-index'));
-+          if (Number.isNaN(idx) || idx < 0 || idx >= state.wallSections) return;
-+          state.activeSection = idx;
-+          renderPreviews();
-+        });
-+      });
-+    }
-+
-+    if (dom.wallPicker) {
-+      dom.wallPicker.addEventListener('input', (e) => {
-+        applyColor(e.target.value, 'wall', state.activeSection);
-+      });
-+    }
-+
-+    if (dom.furniturePicker) {
-+      dom.furniturePicker.addEventListener('input', (e) => {
-+        applyColor(e.target.value, 'furniture');
-+      });
-+    }
-+
-+    if (dom.applyWallColorBtn) {
-+      dom.applyWallColorBtn.addEventListener('click', () => {
-+        if (!dom.wallHexInput) return;
-+        applyColor(dom.wallHexInput.value, 'wall', state.activeSection);
-+      });
-+    }
-+
-+    if (dom.applyFurnitureColorBtn) {
-+      dom.applyFurnitureColorBtn.addEventListener('click', () => {
-+        if (!dom.furnitureHexInput) return;
-+        applyColor(dom.furnitureHexInput.value, 'furniture');
-+      });
-+    }
-+
-+    if (dom.catalogSelect) {
-+      dom.catalogSelect.addEventListener('change', updateCatalogColors);
-+    }
-+
-+    if (dom.applyCatalogColorBtn) {
-+      dom.applyCatalogColorBtn.addEventListener('click', () => {
-+        if (!dom.catalogColorSelect) return;
-+        const hex = dom.catalogColorSelect.value;
-+
-+        const target = dom.targetSelect ? dom.targetSelect.value : 'wall';
-+        if (target === 'furniture') {
-+          applyColor(hex, 'furniture');
-+        } else {
-+          applyColor(hex, 'wall', state.activeSection);
-+        }
-+      });
-+    }
-+
-+    if (dom.applyTemplateBtn) {
-+      dom.applyTemplateBtn.addEventListener('click', () => {
-+        if (!dom.templateSelect) return;
-+        applyDesignerTemplate(dom.templateSelect.value);
-+      });
-+    }
-+
-+    if (dom.generateHarmonyBtn) {
-+      dom.generateHarmonyBtn.addEventListener('click', () => {
-+        const baseHex = state.wallColors[state.activeSection] || state.furnitureColor;
-+        const generated = generateHarmonyPalette(baseHex);
-+        if (!generated) return;
-+
-+        renderPalette(dom.similarList, generated.similar);
-+        renderPalette(dom.contrastList, generated.contrast);
-+        renderPalette(dom.monochromeList, generated.monochrome);
-+      });
-+    }
-+
-+    if (dom.lightToggle) {
-+      dom.lightToggle.addEventListener('change', (e) => {
-+        state.lightOn = !!e.target.checked;
-+        renderLight();
-+      });
-+    }
-+
-+    if (dom.lightTemperature) {
-+      dom.lightTemperature.addEventListener('input', (e) => {
-+        state.lightTemperature = Math.max(0, Math.min(100, Number(e.target.value) || 0));
-+        renderLight();
-+      });
-+    }
-+  }
-+
-+  function bootstrapInitialValues() {
-+    if (dom.sectionCountInput) {
-+      const value = Number(dom.sectionCountInput.value);
-+      if (!Number.isNaN(value)) setWallSections(value);
-+    }
-+
-+    if (dom.wallPicker && normalizeHex(dom.wallPicker.value)) {
-+      state.wallColors[state.activeSection] = normalizeHex(dom.wallPicker.value);
-+    }
-+
-+    if (dom.furniturePicker && normalizeHex(dom.furniturePicker.value)) {
-+      state.furnitureColor = normalizeHex(dom.furniturePicker.value);
-+    }
-+
-+    if (dom.lightToggle) {
-+      state.lightOn = !!dom.lightToggle.checked;
-+    }
-+
-+    if (dom.lightTemperature) {
-+      state.lightTemperature = Math.max(0, Math.min(100, Number(dom.lightTemperature.value) || 50));
-+    }
-+  }
-+
-+  function init() {
-+    bootstrapInitialValues();
-+    fillCatalogUI();
-+    fillTemplateUI();
-+    bindEvents();
-+    renderPreviews();
-+
-+    console.log('INIT OK');
-+  }
-+
-+  if (typeof document !== 'undefined') {
-+    if (document.readyState === 'loading') {
-+      document.addEventListener('DOMContentLoaded', init, { once: true });
-+    } else {
-+      init();
-+    }
-+  }
-+
-+  // expose API for debug/manual control
-+  if (typeof window !== 'undefined') {
-+    window.colorpaint = {
-+      state,
-+      applyColor,
-+      applyDesignerTemplate,
-+      generateHarmonyPalette,
-+      setWallSections,
-+      normalizeHex
-+    };
-+  }
-+})();
+  const SUPPORTED_CATALOGS = ['dulux', 'ice parade', 'vision', 'ral'];
+  const DEFAULT_WALL_HEX = '#D9D9D9';
+  const DEFAULT_FURNITURE_HEX = '#8C8C8C';
 
+  const q = (selector) => (typeof document !== 'undefined' ? document.querySelector(selector) : null);
+  const qa = (selector) => (typeof document !== 'undefined' ? Array.from(document.querySelectorAll(selector)) : []);
+
+  const dom = {
+    roomPreview: q('[data-room-preview]'),
+    wallPreview: q('[data-wall-preview]'),
+    furniturePreview: q('[data-furniture-preview]'),
+
+    sectionCountInput: q('[data-section-count]'),
+    sectionButtons: qa('[data-section-index]'),
+
+    wallCodeInput: q('[data-wall-hex]'),
+    wallPicker: q('[data-wall-picker]'),
+    applyWallColorBtn: q('[data-apply-wall-color]'),
+
+    furnitureCodeInput: q('[data-furniture-hex]'),
+    furniturePicker: q('[data-furniture-picker]'),
+    applyFurnitureColorBtn: q('[data-apply-furniture-color]'),
+
+    catalogSelect: q('[data-color-catalog]'),
+    catalogColorSelect: q('[data-catalog-color]'),
+    targetSelect: q('[data-color-target]'),
+    applyCatalogColorBtn: q('[data-apply-catalog-color]'),
+
+    templateSelect: q('[data-template-select]'),
+    applyTemplateBtn: q('[data-apply-template]'),
+
+    generateHarmonyBtn: q('[data-generate-harmony]'),
+    similarList: q('[data-similar-list]'),
+    contrastList: q('[data-contrast-list]')
+  };
+
+  const state = {
+    sections: 1,
+    activeSection: 0,
+    wallHexBySection: [DEFAULT_WALL_HEX, DEFAULT_WALL_HEX, DEFAULT_WALL_HEX, DEFAULT_WALL_HEX],
+    furnitureHex: DEFAULT_FURNITURE_HEX
+  };
+
+  function sanitizeHex(hex) {
+    if (typeof hex !== 'string') return null;
+    const value = hex.trim().toUpperCase();
+    return /^#[0-9A-F]{6}$/.test(value) ? value : null;
+  }
+
+  function rgbToHsl(r, g, b) {
+    const nr = r / 255;
+    const ng = g / 255;
+    const nb = b / 255;
+    const max = Math.max(nr, ng, nb);
+    const min = Math.min(nr, ng, nb);
+    const d = max - min;
+
+    let h = 0;
+    let s = 0;
+    const l = (max + min) / 2;
+
+    if (d !== 0) {
+      s = d / (1 - Math.abs(2 * l - 1));
+      if (max === nr) h = 60 * (((ng - nb) / d) % 6);
+      else if (max === ng) h = 60 * ((nb - nr) / d + 2);
+      else h = 60 * ((nr - ng) / d + 4);
+    }
+
+    if (h < 0) h += 360;
+    return { h, s: s * 100, l: l * 100 };
+  }
+
+  function hslToRgb(h, s, l) {
+    const ns = Math.max(0, Math.min(100, s)) / 100;
+    const nl = Math.max(0, Math.min(100, l)) / 100;
+    const c = (1 - Math.abs(2 * nl - 1)) * ns;
+    const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+    const m = nl - c / 2;
+
+    let r1 = 0;
+    let g1 = 0;
+    let b1 = 0;
+
+    if (h < 60) {
+      r1 = c;
+      g1 = x;
+    } else if (h < 120) {
+      r1 = x;
+      g1 = c;
+    } else if (h < 180) {
+      g1 = c;
+      b1 = x;
+    } else if (h < 240) {
+      g1 = x;
+      b1 = c;
+    } else if (h < 300) {
+      r1 = x;
+      b1 = c;
+    } else {
+      r1 = c;
+      b1 = x;
+    }
+
+    return {
+      r: Math.round((r1 + m) * 255),
+      g: Math.round((g1 + m) * 255),
+      b: Math.round((b1 + m) * 255)
+    };
+  }
+
+  function hexToRgb(hex) {
+    const valid = sanitizeHex(hex);
+    if (!valid) return null;
+    const raw = valid.slice(1);
+    return {
+      r: parseInt(raw.slice(0, 2), 16),
+      g: parseInt(raw.slice(2, 4), 16),
+      b: parseInt(raw.slice(4, 6), 16)
+    };
+  }
+
+  function rgbToHex(r, g, b) {
+    const asHex = (n) => Math.max(0, Math.min(255, n)).toString(16).padStart(2, '0').toUpperCase();
+    return `#${asHex(r)}${asHex(g)}${asHex(b)}`;
+  }
+
+  function hexToHsl(hex) {
+    const rgb = hexToRgb(hex);
+    return rgb ? rgbToHsl(rgb.r, rgb.g, rgb.b) : null;
+  }
+
+  function hslToHex(h, s, l) {
+    const rgb = hslToRgb(((h % 360) + 360) % 360, s, l);
+    return rgbToHex(rgb.r, rgb.g, rgb.b);
+  }
+
+  function normalizeCatalogName(name) {
+    return String(name || '')
+      .toLowerCase()
+      .replace(/[_-]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function getCatalogMap() {
+    const raw = typeof window !== 'undefined' && window.colorDatabase && typeof window.colorDatabase === 'object'
+      ? window.colorDatabase
+      : {};
+
+    const result = {};
+    Object.entries(raw).forEach(([catalogName, catalog]) => {
+      if (!catalog || typeof catalog !== 'object') return;
+      const normalizedName = normalizeCatalogName(catalogName);
+      if (!SUPPORTED_CATALOGS.includes(normalizedName)) return;
+
+      const entries = [];
+      Object.entries(catalog).forEach(([code, hex]) => {
+        const validHex = sanitizeHex(String(hex));
+        if (!validHex) return;
+        entries.push({ code: String(code), hex: validHex });
+      });
+
+      if (entries.length > 0) {
+        result[normalizedName] = entries;
+      }
+    });
+
+    return result;
+  }
+
+  function findColorByCode(code, catalogName) {
+    const inputCode = String(code || '').trim().toLowerCase();
+    if (!inputCode) return null;
+
+    const catalogs = getCatalogMap();
+    const desiredCatalog = normalizeCatalogName(catalogName);
+
+    const tryFind = (entries, catalogKey) => {
+      if (!Array.isArray(entries)) return null;
+      const exact = entries.find((item) => item.code.toLowerCase() === inputCode);
+      return exact ? { ...exact, catalog: catalogKey } : null;
+    };
+
+    if (desiredCatalog && catalogs[desiredCatalog]) {
+      const found = tryFind(catalogs[desiredCatalog], desiredCatalog);
+      if (found) return found;
+    }
+
+    for (const [catalogKey, entries] of Object.entries(catalogs)) {
+      const found = tryFind(entries, catalogKey);
+      if (found) return found;
+    }
+
+    return null;
+  }
+
+  function buildWallGradient() {
+    const colors = state.wallHexBySection.slice(0, state.sections);
+    if (colors.length === 0) return DEFAULT_WALL_HEX;
+    if (colors.length === 1) return colors[0];
+
+    const stops = [];
+    for (let i = 0; i < colors.length; i += 1) {
+      const position = (i / (colors.length - 1)) * 100;
+      stops.push(`${colors[i]} ${position.toFixed(2)}%`);
+    }
+
+    return `linear-gradient(90deg, ${stops.join(', ')})`;
+  }
+
+  function syncInputs() {
+    const activeWallHex = state.wallHexBySection[state.activeSection] || DEFAULT_WALL_HEX;
+
+    if (dom.wallPicker) dom.wallPicker.value = activeWallHex;
+    if (dom.furniturePicker) dom.furniturePicker.value = state.furnitureHex;
+
+    if (dom.wallCodeInput && document.activeElement !== dom.wallCodeInput) {
+      dom.wallCodeInput.value = dom.wallCodeInput.value || '';
+    }
+    if (dom.furnitureCodeInput && document.activeElement !== dom.furnitureCodeInput) {
+      dom.furnitureCodeInput.value = dom.furnitureCodeInput.value || '';
+    }
+  }
+
+  function renderSectionsUI() {
+    if (!Array.isArray(dom.sectionButtons)) return;
+
+    dom.sectionButtons.forEach((button) => {
+      if (!button) return;
+      const idx = Number(button.getAttribute('data-section-index'));
+      const enabled = Number.isInteger(idx) && idx >= 0 && idx < state.sections;
+      button.disabled = !enabled;
+      button.classList.toggle('is-active', idx === state.activeSection);
+      button.setAttribute('aria-pressed', idx === state.activeSection ? 'true' : 'false');
+    });
+  }
+
+  function renderPreview() {
+    const wallGradient = buildWallGradient();
+
+    if (dom.wallPreview) dom.wallPreview.style.background = wallGradient;
+    if (dom.furniturePreview) dom.furniturePreview.style.background = state.furnitureHex;
+
+    if (dom.roomPreview) {
+      dom.roomPreview.style.setProperty('--wall-gradient', wallGradient);
+      dom.roomPreview.style.setProperty('--furniture-color', state.furnitureHex);
+    }
+
+    renderSectionsUI();
+    syncInputs();
+  }
+
+  function applyColorHex(target, hex, sectionIndex = state.activeSection) {
+    const validHex = sanitizeHex(hex);
+    if (!validHex) return false;
+
+    if (target === 'furniture') {
+      state.furnitureHex = validHex;
+    } else {
+      const idx = Math.max(0, Math.min(3, Number(sectionIndex) || 0));
+      state.wallHexBySection[idx] = validHex;
+      state.activeSection = idx;
+    }
+
+    renderPreview();
+    console.log('COLOR APPLIED', { target, hex: validHex, sectionIndex });
+    return true;
+  }
+
+  function applyByCode(target, code, catalogName) {
+    const found = findColorByCode(code, catalogName);
+    if (!found) return false;
+    return applyColorHex(target, found.hex, state.activeSection);
+  }
+
+  function setSections(count) {
+    const safeCount = Math.max(1, Math.min(4, Number(count) || 1));
+    state.sections = safeCount;
+    if (state.activeSection > safeCount - 1) {
+      state.activeSection = safeCount - 1;
+    }
+    renderPreview();
+  }
+
+  function fillCatalogSelects() {
+    const catalogs = getCatalogMap();
+
+    if (dom.catalogSelect) {
+      dom.catalogSelect.innerHTML = '';
+      const empty = document.createElement('option');
+      empty.value = '';
+      empty.textContent = 'Выберите базу';
+      dom.catalogSelect.appendChild(empty);
+
+      SUPPORTED_CATALOGS.forEach((name) => {
+        if (!catalogs[name]) return;
+        const option = document.createElement('option');
+        option.value = name;
+        option.textContent = name;
+        dom.catalogSelect.appendChild(option);
+      });
+
+      if (dom.catalogSelect.options.length > 1) dom.catalogSelect.selectedIndex = 1;
+    }
+
+    updateCatalogColorOptions();
+  }
+
+  function updateCatalogColorOptions() {
+    if (!dom.catalogColorSelect) return;
+
+    const catalogs = getCatalogMap();
+    const selectedCatalog = normalizeCatalogName(dom.catalogSelect ? dom.catalogSelect.value : '');
+    const colors = catalogs[selectedCatalog] || [];
+
+    dom.catalogColorSelect.innerHTML = '';
+
+    const empty = document.createElement('option');
+    empty.value = '';
+    empty.textContent = 'Выберите цвет';
+    dom.catalogColorSelect.appendChild(empty);
+
+    colors.forEach((entry) => {
+      const option = document.createElement('option');
+      option.value = entry.code;
+      option.textContent = `${entry.code}`;
+      dom.catalogColorSelect.appendChild(option);
+    });
+  }
+
+  function getTemplates() {
+    const source = typeof window !== 'undefined' && window.designerTemplates && typeof window.designerTemplates === 'object'
+      ? window.designerTemplates
+      : {};
+
+    const templates = [];
+    Object.entries(source).forEach(([key, template]) => {
+      if (!template || typeof template !== 'object') return;
+      const main = sanitizeHex(String(template.main || ''));
+      const secondary = sanitizeHex(String(template.secondary || ''));
+      const accent = sanitizeHex(String(template.accent || ''));
+      if (!main || !secondary || !accent) return;
+      templates.push({
+        key,
+        label: String(template.name || key),
+        main,
+        secondary,
+        accent,
+        accentTarget: String(template.accentTarget || 'furniture').toLowerCase()
+      });
+    });
+
+    return templates;
+  }
+
+  function fillTemplatesSelect() {
+    if (!dom.templateSelect) return;
+
+    dom.templateSelect.innerHTML = '';
+    const empty = document.createElement('option');
+    empty.value = '';
+    empty.textContent = 'Выберите шаблон';
+    dom.templateSelect.appendChild(empty);
+
+    getTemplates().forEach((template) => {
+      const option = document.createElement('option');
+      option.value = template.key;
+      option.textContent = template.label;
+      dom.templateSelect.appendChild(option);
+    });
+  }
+
+  function applyTemplate(templateKey) {
+    const template = getTemplates().find((item) => item.key === templateKey);
+    if (!template) return false;
+
+    state.wallHexBySection[0] = template.main;
+    state.wallHexBySection[1] = template.main;
+    state.wallHexBySection[2] = template.secondary;
+
+    if (template.accentTarget === 'wall') {
+      state.sections = 4;
+      state.wallHexBySection[3] = template.accent;
+    } else {
+      state.sections = 3;
+      state.furnitureHex = template.accent;
+    }
+
+    state.activeSection = 0;
+    renderPreview();
+    console.log('COLOR APPLIED', { target: 'template', template: template.key });
+    return true;
+  }
+
+  function renderSuggestionList(listElement, colors) {
+    if (!listElement) return;
+    listElement.innerHTML = '';
+
+    colors.forEach((hex) => {
+      const li = document.createElement('li');
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'palette-color';
+      button.textContent = hex;
+      button.style.background = hex;
+      button.style.border = '1px solid rgba(0, 0, 0, 0.2)';
+      button.style.color = '#1a1a1a';
+      button.style.padding = '4px 8px';
+      button.style.cursor = 'pointer';
+
+      button.addEventListener('click', () => {
+        applyColorHex('wall', hex, state.activeSection);
+      });
+
+      li.appendChild(button);
+      listElement.appendChild(li);
+    });
+  }
+
+  function generateSuggestions() {
+    const baseHex = state.wallHexBySection[state.activeSection] || state.furnitureHex;
+    const baseHsl = hexToHsl(baseHex);
+    if (!baseHsl) return;
+
+    const similar = [
+      hslToHex(baseHsl.h - 18, baseHsl.s, Math.min(95, baseHsl.l + 5)),
+      hslToHex(baseHsl.h - 8, baseHsl.s, baseHsl.l),
+      hslToHex(baseHsl.h + 8, baseHsl.s, baseHsl.l),
+      hslToHex(baseHsl.h + 18, baseHsl.s, Math.max(10, baseHsl.l - 5))
+    ];
+
+    const contrast = [
+      hslToHex(baseHsl.h + 180, baseHsl.s, baseHsl.l),
+      hslToHex(baseHsl.h + 150, Math.min(100, baseHsl.s + 10), baseHsl.l),
+      hslToHex(baseHsl.h + 210, Math.max(0, baseHsl.s - 10), baseHsl.l)
+    ];
+
+    renderSuggestionList(dom.similarList, similar);
+    renderSuggestionList(dom.contrastList, contrast);
+    console.log('SIMILAR GENERATED', { baseHex, similarCount: similar.length, contrastCount: contrast.length });
+  }
+
+  function bindEvents() {
+    if (dom.sectionCountInput) {
+      dom.sectionCountInput.addEventListener('input', (event) => {
+        setSections(event && event.target ? event.target.value : 1);
+      });
+    }
+
+    if (Array.isArray(dom.sectionButtons)) {
+      dom.sectionButtons.forEach((button) => {
+        if (!button) return;
+        button.addEventListener('click', () => {
+          const idx = Number(button.getAttribute('data-section-index'));
+          if (!Number.isInteger(idx) || idx < 0 || idx >= state.sections) return;
+          state.activeSection = idx;
+          renderPreview();
+        });
+      });
+    }
+
+    if (dom.wallPicker) {
+      dom.wallPicker.addEventListener('input', (event) => {
+        const hex = event && event.target ? event.target.value : '';
+        applyColorHex('wall', hex, state.activeSection);
+      });
+    }
+
+    if (dom.furniturePicker) {
+      dom.furniturePicker.addEventListener('input', (event) => {
+        const hex = event && event.target ? event.target.value : '';
+        applyColorHex('furniture', hex);
+      });
+    }
+
+    if (dom.applyWallColorBtn) {
+      dom.applyWallColorBtn.addEventListener('click', () => {
+        const code = dom.wallCodeInput ? dom.wallCodeInput.value : '';
+        const catalog = dom.catalogSelect ? dom.catalogSelect.value : '';
+        if (!applyByCode('wall', code, catalog) && dom.wallPicker) {
+          applyColorHex('wall', dom.wallPicker.value, state.activeSection);
+        }
+      });
+    }
+
+    if (dom.applyFurnitureColorBtn) {
+      dom.applyFurnitureColorBtn.addEventListener('click', () => {
+        const code = dom.furnitureCodeInput ? dom.furnitureCodeInput.value : '';
+        const catalog = dom.catalogSelect ? dom.catalogSelect.value : '';
+        if (!applyByCode('furniture', code, catalog) && dom.furniturePicker) {
+          applyColorHex('furniture', dom.furniturePicker.value);
+        }
+      });
+    }
+
+    if (dom.catalogSelect) {
+      dom.catalogSelect.addEventListener('change', updateCatalogColorOptions);
+    }
+
+    if (dom.applyCatalogColorBtn) {
+      dom.applyCatalogColorBtn.addEventListener('click', () => {
+        const catalog = dom.catalogSelect ? dom.catalogSelect.value : '';
+        const codeFromSelect = dom.catalogColorSelect ? dom.catalogColorSelect.value : '';
+        const target = dom.targetSelect ? dom.targetSelect.value : 'wall';
+
+        if (!applyByCode(target === 'furniture' ? 'furniture' : 'wall', codeFromSelect, catalog)) {
+          return;
+        }
+      });
+    }
+
+    if (dom.applyTemplateBtn) {
+      dom.applyTemplateBtn.addEventListener('click', () => {
+        const key = dom.templateSelect ? dom.templateSelect.value : '';
+        applyTemplate(key);
+      });
+    }
+
+    if (dom.generateHarmonyBtn) {
+      dom.generateHarmonyBtn.addEventListener('click', generateSuggestions);
+    }
+  }
+
+  function initInputPlaceholders() {
+    if (dom.wallCodeInput) dom.wallCodeInput.placeholder = 'Введите цвет';
+    if (dom.furnitureCodeInput) dom.furnitureCodeInput.placeholder = 'Введите цвет';
+  }
+
+  function init() {
+    initInputPlaceholders();
+    fillCatalogSelects();
+    fillTemplatesSelect();
+    bindEvents();
+    renderPreview();
+    console.log('INIT OK');
+  }
+
+  if (typeof document !== 'undefined') {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init, { once: true });
+    } else {
+      init();
+    }
+  }
+})();
