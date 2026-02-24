@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
- <main class="colorpaint-layout">
+  <main class="colorpaint-layout">
     <section class="disclaimers" aria-label="Дисклеймеры">
       <p>Цвет на экране может отличаться от фактического.</p>
       <p>Перед покраской обязательно перемешивайте краску.</p>
@@ -28,21 +28,7 @@
 
         <div class="color-input-group">
           <input type="text" placeholder="Введите цвет" aria-label="Код цвета" />
-          <section class="color-matching" aria-labelledby="matchingTitle">
-      <h2 id="matchingTitle">Подбор цветов</h2>
-      <div class="matching-results">
-        <div>
-          <h3>Похожие цвета</h3>
-      </div>
-
-      <div class="matching-results">
-        <div>
-          <h3>Похожие цвета</h3>
-          <div class="color-result-list" aria-label="Список похожих кликабельных цветов"></div>
-        </div>
-        <div>
-          <h3>Контрастные цвета</h3>
-          <div class="color-result-list" aria-label="Список контрастных кликабельных цветов"></div>
+          <button type="button">Применить цвет</button>
         </div>
       </div>
     </section>
@@ -57,26 +43,37 @@
           <input type="range" min="0" max="100" value="50" />
         </label>
       </div>
-      <button type="button" data-close-template-modal>Закрыть</button>
-      </dialog>
     </section>
-  </main>
-        <label>
-          Регулировка света
-          <input type="range" min="0" max="100" value="50" />
-        </label>
+
+    <section class="color-matching" aria-labelledby="matchingTitle">
+      <h2 id="matchingTitle">Подбор цветов</h2>
+      <div class="matching-actions">
+        <button type="button">Генерировать похожие</button>
+        <button type="button">Генерировать контрастные</button>
+      </div>
+      <div class="matching-results">
+        <div>
+          <h3>Похожие цвета</h3>
+          <div class="color-result-list" aria-label="Список похожих кликабельных цветов"></div>
+        </div>
+        <div>
+          <h3>Контрастные цвета</h3>
+          <div class="color-result-list" aria-label="Список контрастных кликабельных цветов"></div>
+        </div>
       </div>
     </section>
 
-    <section class="disclaimers" aria-label="Дисклеймеры">
-      <p>Цвет на экране может отличаться.</p>
-      <p>Перемешивайте краску перед покраской.</p>
+    <section class="designer-templates" aria-labelledby="templatesTitle">
+      <h2 id="templatesTitle">Шаблоны дизайнеров</h2>
+      <details>
+        <summary>Показать шаблоны</summary>
+        <p>Выберите готовую комбинацию для split-секций.</p>
+      </details>
     </section>
   </main>
 
-  <script src="script.js"></script>
   <script src="colorDatabase.js"></script>
   <script src="designerTemplates.js"></script>
+  <script src="script.js"></script>
 </body>
 </html>
-
