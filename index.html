@@ -7,7 +7,12 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <main class="colorpaint-layout">
+ <main class="colorpaint-layout">
+    <section class="disclaimers" aria-label="Дисклеймеры">
+      <p>Цвет на экране может отличаться от фактического.</p>
+      <p>Перед покраской обязательно перемешивайте краску.</p>
+    </section>
+
     <section class="wall-section" aria-labelledby="wallTitle">
       <h1 id="wallTitle">Стена и управление цветом</h1>
       <div class="wall-preview" aria-label="Большой блок стены"></div>
@@ -23,16 +28,11 @@
 
         <div class="color-input-group">
           <input type="text" placeholder="Введите цвет" aria-label="Код цвета" />
-          <button type="button">Применить цвет</button>
-        </div>
-      </div>
-    </section>
-
-    <section class="color-matching" aria-labelledby="matchingTitle">
+          <section class="color-matching" aria-labelledby="matchingTitle">
       <h2 id="matchingTitle">Подбор цветов</h2>
-      <div class="matching-actions">
-        <button type="button">Генерировать похожие</button>
-        <button type="button">Генерировать контрастные</button>
+      <div class="matching-results">
+        <div>
+          <h3>Похожие цвета</h3>
       </div>
 
       <div class="matching-results">
@@ -47,30 +47,20 @@
       </div>
     </section>
 
-    <section class="designer-templates" aria-labelledby="templatesTitle">
-      <h2 id="templatesTitle">Шаблоны дизайнеров</h2>
-      <details>
-        <summary>Показать популярные шаблоны</summary>
-        <p>Здесь отображаются самые популярные шаблоны.</p>
-        <button type="button" data-open-template-modal>Выбрать шаблон</button>
-      </details>
-
-      <dialog id="templateModal" aria-label="Выбор шаблона">
-        <p>Модальное окно выбора шаблона.</p>
-        <button type="button" data-close-template-modal>Закрыть</button>
-      </dialog>
-    </section>
-
-    <section class="furniture-section" aria-labelledby="furnitureTitle">
-      <h2 id="furnitureTitle">Мебель</h2>
-      <div class="furniture-placeholder">Placeholder мебели (будет добавлено позже).</div>
-    </section>
-
     <section class="lighting-section" aria-labelledby="lightingTitle">
       <h2 id="lightingTitle">Освещение</h2>
       <div class="lighting-controls">
         <button type="button">Теплое</button>
         <button type="button">Холодное</button>
+        <label>
+          Регулировка света
+          <input type="range" min="0" max="100" value="50" />
+        </label>
+      </div>
+      <button type="button" data-close-template-modal>Закрыть</button>
+      </dialog>
+    </section>
+  </main>
         <label>
           Регулировка света
           <input type="range" min="0" max="100" value="50" />
@@ -89,3 +79,4 @@
   <script src="designerTemplates.js"></script>
 </body>
 </html>
+
