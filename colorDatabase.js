@@ -9,7 +9,10 @@ const parseRgb = (value) => {
   return matches ? matches.slice(0, 3).map(Number) : [];
 };
 
-const normalizeHex = (value) => String(value || '').trim().toLowerCase();
+const normalizeHex = (value) => {
+  const hex = String(value || '').trim().toLowerCase();
+  return /^#[0-9a-f]{6}$/.test(hex) ? hex : '';
+};
 
 const normalizeColor = (color) => ({
   ...color,
