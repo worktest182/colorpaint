@@ -15,12 +15,17 @@
 
     <section class="wall-section" aria-labelledby="wallTitle">
       <h1 id="wallTitle">Стена и управление цветом</h1>
-      <div class="wall-container">
-        <div class="wall-preview" aria-label="Стена из 4 split-блоков"></div>
-        <button type="button" class="fullscreen-toggle fullscreen-btn" aria-label="Развернуть стену на весь экран">⛶</button>
-      </div>
+      <div class="wall-preview" aria-label="Большой блок стены"></div>
 
       <div class="wall-controls">
+        <h2>Split-секции</h2>
+        <div class="split-buttons" role="group" aria-label="Выбор split-секции">
+          <button type="button">Секция 1</button>
+          <button type="button">Секция 2</button>
+          <button type="button">Секция 3</button>
+          <button type="button">Секция 4</button>
+        </div>
+
         <div class="color-input-group">
           <input type="text" placeholder="Введите цвет" aria-label="Код цвета" />
           <button type="button">Применить цвет</button>
@@ -67,7 +72,8 @@
     </section>
   </main>
 
+  <script src="colorDatabase.js"></script>
   <script src="designerTemplates.js"></script>
-  <script type="module" src="script.js"></script>
+  <script src="script.js"></script>
 </body>
 </html>
