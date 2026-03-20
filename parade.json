@@ -1,0 +1,58 @@
+diff --git a/parade.json b/parade.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..16f68e35683796f525e0f550522c23cfe1499046
+--- /dev/null
++++ b/parade.json
+@@ -0,0 +1,52 @@
++[
++  {
++    "id": "AP43-1",
++    "rgb": "rgb(235,229,189)",
++    "hex": "#EBE5BD",
++    "hsl": "hsl(49, 47%, 83%)",
++    "hueBucket": "yellow",
++    "main": "#ebe5bd",
++    "accent": "#c8b97a",
++    "accentTarget": "#8c7440"
++  },
++  {
++    "id": "AP43-4",
++    "rgb": "rgb(201,185,122)",
++    "hex": "#C9B97A",
++    "hsl": "hsl(48, 42%, 64%)",
++    "hueBucket": "yellow",
++    "main": "#c9b97a",
++    "accent": "#8c7440",
++    "accentTarget": "#5d4b26"
++  },
++  {
++    "id": "AP12-2",
++    "rgb": "rgb(214,223,217)",
++    "hex": "#D6DFD9",
++    "hsl": "hsl(140, 13%, 86%)",
++    "hueBucket": "green",
++    "main": "#d6dfd9",
++    "accent": "#8fa99a",
++    "accentTarget": "#2d4a3e"
++  },
++  {
++    "id": "AP77-3",
++    "rgb": "rgb(191,201,217)",
++    "hex": "#BFC9D9",
++    "hsl": "hsl(217, 25%, 80%)",
++    "hueBucket": "blue",
++    "main": "#bfc9d9",
++    "accent": "#355070",
++    "accentTarget": "#1f3147"
++  },
++  {
++    "id": "AP18-5",
++    "rgb": "rgb(242,216,194)",
++    "hex": "#F2D8C2",
++    "hsl": "hsl(28, 65%, 85%)",
++    "hueBucket": "orange",
++    "main": "#f2d8c2",
++    "accent": "#c9a27e",
++    "accentTarget": "#8b3a3a"
++  }
++]
