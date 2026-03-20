@@ -29,6 +29,8 @@
 
   const normalizeCatalog = (value) => String(value || '').toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
 
+  const normalizeId = (value) => String(value || '').trim().toLowerCase();
+
   const parseHex = (hex) => {
     const valid = normalizeHex(hex);
     if (!valid) return null;
@@ -37,11 +39,6 @@
       g: parseInt(valid.slice(3, 5), 16),
       b: parseInt(valid.slice(5, 7), 16)
     };
-  };
-
-  const rgbToHex = (r, g, b) => {
-    const part = (n) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, '0').toUpperCase();
-    return `#${part(r)}${part(g)}${part(b)}`;
   };
 
   const rgbToHsl = (r, g, b) => {
@@ -80,7 +77,7 @@
 
   const findButtonByText = (container, text) => qa('button', container).find((btn) => btn.textContent && btn.textContent.trim() === text) || null;
 
-const dom = {
+  const dom = {
     body: typeof document !== 'undefined' ? document.body : null,
     wallSection: q('.wall-section'),
     wallContainer: q('.wall-container'),
@@ -120,13 +117,19 @@ const dom = {
   };
 
   const getColorDb = () => {
-    if (typeof window === 'undefined' || !window.colorDatabase || typeof window.colorDatabase !== 'object') return {};
-    return window.colorDatabase;
+    if (typeof window === 'undefined') return [];
+    if (Array.isArray(window.colorDatabase)) return window.colorDatabase;
+    if (window.colorDatabase && Array.isArray(window.colorDatabase.colors)) return window.colorDatabase.colors;
+    return [];
   };
 
   const getCatalogMap = () => {
     const db = getColorDb();
     const map = {};
+
+    if (Array.isArray(db)) {
+      return map;
+    }
 
     Object.keys(db || {}).forEach((rawKey) => {
       const normalized = normalizeCatalog(rawKey);
@@ -143,6 +146,14 @@ const dom = {
   const getTemplates = () => {
     if (typeof window === 'undefined' || !window.designerTemplates || typeof window.designerTemplates !== 'object') return {};
     return window.designerTemplates;
+  };
+
+  const setSectionColors = (updater) => {
+    const nextColors = typeof updater === 'function' ? updater(state.sectionColors.slice()) : updater;
+    if (!Array.isArray(nextColors) || nextColors.length !== state.sections) return;
+    state.sectionColors = nextColors.map((color, index) => normalizeHex(color) || state.sectionColors[index] || '#D9D9D9');
+    renderActiveSection();
+    applyLighting();
   };
 
   const resolveColorByCode = (rawInput) => {
@@ -174,6 +185,34 @@ const dom = {
     }
 
     return null;
+  };
+
+  const findColorById = (inputValue) => {
+    const idNormalized = normalizeId(inputValue);
+    if (!idNormalized) return null;
+    return getColorDb().find((entry) => normalizeId(entry && entry.id) === idNormalized) || null;
+  };
+
+  const applyPaletteToWall = ({ main, accent, accentTarget }) => {
+    const nextColors = [main, main, accent, accentTarget].map((value) => normalizeHex(value));
+    if (nextColors.some((value) => !value)) {
+      console.log('Цвет не найден');
+      return;
+    }
+
+    setSectionColors(nextColors);
+    state.activeSection = 0;
+  };
+
+  const applyColorById = (inputValue) => {
+    const found = findColorById(inputValue);
+
+    if (!found) {
+      console.log('Цвет не найден');
+      return;
+    }
+
+    applyPaletteToWall(found);
   };
 
   const getPaletteFromDatabase = () => {
@@ -244,10 +283,8 @@ const dom = {
     const validHex = normalizeHex(hex);
     if (!validHex) return;
     const targetSection = Math.max(0, Math.min(state.sections - 1, Number(section)));
-    state.sectionColors[targetSection] = validHex;
+    setSectionColors((currentColors) => currentColors.map((color, index) => (index === targetSection ? validHex : color)));
     state.activeSection = targetSection;
-    renderActiveSection();
-    applyLighting();
     console.log('COLOR APPLIED', { code: code || 'manual', hex: validHex, section: targetSection + 1 });
   };
 
@@ -329,15 +366,8 @@ const dom = {
     const accentTarget = normalizeHex(String(tpl.accentTarget || ''));
     if (!main || !accent || !accentTarget) return;
 
-    state.sectionColors = state.sectionColors.map((_, index) => {
-      if (index === 0 || index === 1) return main;
-      if (index === 2) return accent;
-      return accentTarget;
-    });
-
+    setSectionColors([main, main, accent, accentTarget]);
     state.activeSection = 0;
-    renderActiveSection();
-    applyLighting();
   };
 
   const setupTemplateUi = () => {
@@ -364,6 +394,11 @@ const dom = {
     state.templatesRendered = true;
   };
 
+  const handleApplyColor = () => {
+    const inputValue = dom.colorInput ? dom.colorInput.value : '';
+    applyColorById(inputValue);
+  };
+
   const bindEvents = () => {
     if (dom.fullscreenToggle && dom.wallPreview && dom.body) {
       dom.fullscreenToggle.addEventListener('click', () => {
@@ -375,20 +410,13 @@ const dom = {
     }
 
     if (dom.applyColorButton) {
-      dom.applyColorButton.addEventListener('click', () => {
-        const input = dom.colorInput ? dom.colorInput.value : '';
-        const found = resolveColorByCode(input);
-        if (!found) return;
-        applyColor({ code: `${found.catalog}:${found.code}`, hex: found.hex, section: state.activeSection });
-      });
+      dom.applyColorButton.addEventListener('click', handleApplyColor);
     }
 
     if (dom.colorInput) {
       dom.colorInput.addEventListener('keydown', (event) => {
         if (!event || event.key !== 'Enter') return;
-        const found = resolveColorByCode(dom.colorInput.value);
-        if (!found) return;
-        applyColor({ code: `${found.catalog}:${found.code}`, hex: found.hex, section: state.activeSection });
+        handleApplyColor();
       });
     }
 
@@ -444,6 +472,7 @@ const dom = {
     setupTemplateUi();
     bindEvents();
     if (typeof window !== 'undefined') {
+      window.applyColorById = applyColorById;
       window.addEventListener('load', setupTemplateUi, { once: true });
     }
     console.log('INIT OK');
