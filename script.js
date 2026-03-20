@@ -68,6 +68,7 @@ import { colorDatabase, findColorById, findNearestColorByRgb } from './colorData
 
   const dom = {
     body: typeof document !== 'undefined' ? document.body : null,
+    wallContainer: q('.wall-container'),
     wallPreview: q('.wall-preview'),
     fullscreenToggle: q('.fullscreen-toggle'),
     colorInput: q('.color-input-group input[type="text"]'),
@@ -83,10 +84,12 @@ import { colorDatabase, findColorById, findNearestColorByRgb } from './colorData
     brightnessSlider: q('.lighting-controls input[type="range"]')
   };
 
+  const DEFAULT_SPLIT_COLOR = '#d9d9d9';
+
   const state = {
     activeSection: 0,
     sections: 4,
-    sectionColors: ['#d9d9d9', '#d9d9d9', '#d9d9d9', '#d9d9d9'],
+    sectionColors: Array(4).fill(DEFAULT_SPLIT_COLOR),
     isFullscreen: false,
     generationTick: 0,
     templatesRendered: false,
@@ -101,9 +104,27 @@ import { colorDatabase, findColorById, findNearestColorByRgb } from './colorData
     const nextColors = typeof updater === 'function' ? updater(state.sectionColors.slice()) : updater;
     if (!Array.isArray(nextColors) || nextColors.length !== state.sections) return;
 
-    state.sectionColors = nextColors.map((color, index) => normalizeHex(color) || state.sectionColors[index] || '#d9d9d9');
+    state.sectionColors = nextColors.map((color, index) => normalizeHex(color) || state.sectionColors[index] || DEFAULT_SPLIT_COLOR);
     renderWall();
     applyLighting();
+  };
+
+  const createSplitPalette = (palette) => {
+    if (!palette) return null;
+
+    const nextColors = [palette.main, palette.main, palette.accent, palette.accentTarget].map(normalizeHex);
+    return nextColors.some((value) => !value) ? null : nextColors;
+  };
+
+  const applySplitPalette = (palette) => {
+    const nextColors = createSplitPalette(palette);
+    if (!nextColors) {
+      console.log('Цвет не найден');
+      return null;
+    }
+
+    setSectionColors(nextColors);
+    return nextColors;
   };
 
   const applyColorToWallSplits = (color) => {
@@ -112,13 +133,8 @@ import { colorDatabase, findColorById, findNearestColorByRgb } from './colorData
       return null;
     }
 
-    const nextColors = [color.main, color.main, color.accent, color.accentTarget].map(normalizeHex);
-    if (nextColors.some((value) => !value)) {
-      console.log('Цвет не найден');
-      return null;
-    }
+    if (!applySplitPalette(color)) return null;
 
-    setSectionColors(nextColors);
     state.activeSection = 0;
     renderWall();
     return color;
@@ -250,7 +266,7 @@ import { colorDatabase, findColorById, findNearestColorByRgb } from './colorData
 
   const generateByMode = (mode) => {
     state.generationTick += 1;
-    const base = state.sectionColors[state.activeSection] || '#d9d9d9';
+    const base = state.sectionColors[state.activeSection] || DEFAULT_SPLIT_COLOR;
     const ranked = rankPaletteByHarmony(base, mode);
     const colors = pickFiveUnique(ranked, base);
     const target = mode === 'similar' ? dom.similarList : dom.contrastList;
@@ -266,11 +282,17 @@ import { colorDatabase, findColorById, findNearestColorByRgb } from './colorData
     const template = getTemplates()[templateKey];
     if (!template) return;
 
-    applyColorToWallSplits({
-      main: template.main,
-      accent: template.accent,
-      accentTarget: template.accentTarget
-    });
+    const mainColor = findColorById(template.mainId);
+    const accentColor = findColorById(template.accentId);
+    const accentTargetColor = findColorById(template.accentTargetId);
+
+    const palette = {
+      main: mainColor?.hex || mainColor?.main,
+      accent: accentColor?.hex || accentColor?.main,
+      accentTarget: accentTargetColor?.hex || accentTargetColor?.main
+    };
+
+    applySplitPalette(palette);
   };
 
   const setupTemplateUi = () => {
@@ -303,13 +325,36 @@ import { colorDatabase, findColorById, findNearestColorByRgb } from './colorData
   };
 
   const bindEvents = () => {
-    if (dom.fullscreenToggle && dom.wallPreview && dom.body) {
-      dom.fullscreenToggle.addEventListener('click', () => {
-        state.isFullscreen = !state.isFullscreen;
+    if (dom.fullscreenToggle && dom.wallPreview && dom.wallContainer && dom.body) {
+      const syncFullscreenState = () => {
+        const isNativeFullscreen = document.fullscreenElement === dom.wallContainer;
+        const isFallbackFullscreen = dom.wallContainer.classList.contains('wall-container-fullscreen');
+        state.isFullscreen = isNativeFullscreen || isFallbackFullscreen;
+        dom.wallContainer.classList.toggle('wall-container-fullscreen', state.isFullscreen);
         dom.wallPreview.classList.toggle('wall-fullscreen', state.isFullscreen);
         dom.body.classList.toggle('fullscreen-active', state.isFullscreen);
         dom.fullscreenToggle.setAttribute('aria-pressed', state.isFullscreen ? 'true' : 'false');
+        dom.fullscreenToggle.setAttribute('aria-label', state.isFullscreen ? 'Свернуть стену' : 'Развернуть стену на весь экран');
+      };
+
+      dom.fullscreenToggle.addEventListener('click', async () => {
+        try {
+          if (document.fullscreenElement === dom.wallContainer && document.exitFullscreen) {
+            await document.exitFullscreen();
+          } else if (!document.fullscreenElement && dom.wallContainer.requestFullscreen) {
+            await dom.wallContainer.requestFullscreen();
+          } else {
+            dom.wallContainer.classList.toggle('wall-container-fullscreen');
+          }
+        } catch (error) {
+          dom.wallContainer.classList.toggle('wall-container-fullscreen');
+        }
+
+        syncFullscreenState();
       });
+
+      document.addEventListener('fullscreenchange', syncFullscreenState);
+      syncFullscreenState();
     }
 
     if (dom.applyColorButton) {
