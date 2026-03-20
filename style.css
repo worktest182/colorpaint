@@ -60,6 +60,10 @@ h3 {
   gap: 16px;
 }
 
+.wall-container {
+  position: relative;
+}
+
 .wall-preview {
   width: 100%;
   min-height: 380px;
@@ -72,9 +76,22 @@ h3 {
   background: #d9d9d9;
 }
 
+.wall-preview.wall-fullscreen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  max-width: none;
+  z-index: 9999;
+  background: #ffffff;
+  border-radius: 0;
+}
+
 .wall-split-section {
   border-right: 2px solid #1f2937;
   transition: box-shadow 0.2s ease;
+  cursor: pointer;
 }
 
 .wall-split-section:last-child {
@@ -90,14 +107,26 @@ h3 {
   gap: 14px;
 }
 
-.split-buttons {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(110px, 1fr));
-  gap: 10px;
+.fullscreen-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 10000;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  opacity: 0;
+  transition: opacity 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease;
 }
 
-.split-buttons button.is-active {
-  box-shadow: 0 0 0 3px rgba(31, 41, 55, 0.18);
+.wall-container:hover .fullscreen-btn,
+.wall-container:focus-within .fullscreen-btn,
+.fullscreen-btn[aria-pressed='true'] {
+  opacity: 1;
 }
 
 .color-input-group,
@@ -190,10 +219,6 @@ button:hover {
   .disclaimers {
     justify-self: stretch;
     max-width: none;
-  }
-
-  .split-buttons {
-    grid-template-columns: repeat(2, minmax(120px, 1fr));
   }
 
   .matching-results {
