@@ -83,9 +83,9 @@
 const dom = {
     body: typeof document !== 'undefined' ? document.body : null,
     wallSection: q('.wall-section'),
+    wallContainer: q('.wall-container'),
     wallPreview: q('.wall-preview'),
     fullscreenToggle: q('.fullscreen-toggle'),
-    splitButtons: qa('.split-buttons button'),
     colorInput: q('.color-input-group input[type="text"]'),
     applyColorButton: findButtonByText(q('.color-input-group'), 'Применить цвет'),
 
@@ -107,8 +107,9 @@ const dom = {
 
   const state = {
     activeSection: 0,
-    sections: Math.max(1, Math.min(4, dom.splitButtons.length || 1)),
+    sections: 4,
     sectionColors: ['#D9D9D9', '#D9D9D9', '#D9D9D9', '#D9D9D9'],
+    isFullscreen: false,
     generationTick: 0,
     templatesRendered: false,
     lighting: {
@@ -204,17 +205,25 @@ const dom = {
       if (idx === state.activeSection) part.classList.add('is-active');
       part.style.backgroundColor = state.sectionColors[idx] || '#D9D9D9';
       part.setAttribute('data-section', String(idx + 1));
-      part.setAttribute('aria-hidden', 'true');
+      part.setAttribute('role', 'button');
+      part.setAttribute('tabindex', '0');
+      part.setAttribute('aria-label', `Split ${idx + 1}`);
+      part.setAttribute('aria-pressed', idx === state.activeSection ? 'true' : 'false');
+      part.addEventListener('click', () => {
+        state.activeSection = idx;
+        renderActiveSection();
+      });
+      part.addEventListener('keydown', (event) => {
+        if (!event || (event.key !== 'Enter' && event.key !== ' ')) return;
+        event.preventDefault();
+        state.activeSection = idx;
+        renderActiveSection();
+      });
       dom.wallPreview.appendChild(part);
     }
   };
 
   const renderActiveSection = () => {
-    dom.splitButtons.forEach((btn, idx) => {
-      const active = idx === state.activeSection;
-      btn.classList.toggle('is-active', active);
-      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
-    });
     renderWall();
   };
 
@@ -316,13 +325,15 @@ const dom = {
     if (!tpl) return;
 
     const main = normalizeHex(String(tpl.main || ''));
-    const secondary = normalizeHex(String(tpl.secondary || ''));
-    if (!main || !secondary) return;
+    const accent = normalizeHex(String(tpl.accent || ''));
+    const accentTarget = normalizeHex(String(tpl.accentTarget || ''));
+    if (!main || !accent || !accentTarget) return;
 
-    state.sections = Math.max(1, Math.min(4, dom.splitButtons.length || 4));
-    for (let idx = 0; idx < state.sections; idx += 1) {
-      state.sectionColors[idx] = idx % 2 === 0 ? main : secondary;
-    }
+    state.sectionColors = state.sectionColors.map((_, index) => {
+      if (index === 0 || index === 1) return main;
+      if (index === 2) return accent;
+      return accentTarget;
+    });
 
     state.activeSection = 0;
     renderActiveSection();
@@ -354,12 +365,14 @@ const dom = {
   };
 
   const bindEvents = () => {
-    dom.splitButtons.forEach((btn, idx) => {
-      btn.addEventListener('click', () => {
-        state.activeSection = idx;
-        renderActiveSection();
+    if (dom.fullscreenToggle && dom.wallPreview && dom.body) {
+      dom.fullscreenToggle.addEventListener('click', () => {
+        state.isFullscreen = !state.isFullscreen;
+        dom.wallPreview.classList.toggle('wall-fullscreen', state.isFullscreen);
+        dom.body.classList.toggle('fullscreen-active', state.isFullscreen);
+        dom.fullscreenToggle.setAttribute('aria-pressed', state.isFullscreen ? 'true' : 'false');
       });
-    });
+    }
 
     if (dom.applyColorButton) {
       dom.applyColorButton.addEventListener('click', () => {
