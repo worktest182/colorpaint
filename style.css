@@ -17,6 +17,10 @@ body {
   background: var(--page-bg);
 }
 
+body.fullscreen-active {
+  overflow: hidden;
+}
+
 .colorpaint-layout {
   max-width: 1280px;
   margin: 0 auto;
