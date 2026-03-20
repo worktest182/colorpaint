@@ -1,23 +1,20 @@
 window.designerTemplates = {
-  scandi_light: {
+   scandi_light: {
     name: 'Scandi Light',
     main: '#E8E3DA',
-    secondary: '#BFC9D9',
     accent: '#355070',
-    accentTarget: 'furniture'
+    accentTarget: '#BFC9D9'
   },
   urban_green: {
     name: 'Urban Green',
     main: '#CBD5C0',
-    secondary: '#8FA99A',
     accent: '#2D4A3E',
-    accentTarget: 'wall'
+    accentTarget: '#8FA99A'
   },
   warm_gallery: {
     name: 'Warm Gallery',
     main: '#F2D8C2',
-    secondary: '#C9A27E',
     accent: '#8B3A3A',
-    accentTarget: 'furniture'
+    accentTarget: '#C9A27E'
   }
 };
