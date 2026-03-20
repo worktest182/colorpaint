@@ -80,8 +80,11 @@
 
   const findButtonByText = (container, text) => qa('button', container).find((btn) => btn.textContent && btn.textContent.trim() === text) || null;
 
-  const dom = {
+const dom = {
+    body: typeof document !== 'undefined' ? document.body : null,
+    wallSection: q('.wall-section'),
     wallPreview: q('.wall-preview'),
+    fullscreenToggle: q('.fullscreen-toggle'),
     splitButtons: qa('.split-buttons button'),
     colorInput: q('.color-input-group input[type="text"]'),
     applyColorButton: findButtonByText(q('.color-input-group'), 'Применить цвет'),
