@@ -1,6 +1,7 @@
-const colorModules = import.meta.glob('./*.json', {
-  eager: true,
-  import: 'default'
-})
+(() => {
+  if (typeof window === 'undefined') return;
 
-export const colorDatabase = Object.values(colorModules).flat()
+  if (!Array.isArray(window.colorDatabase)) {
+    window.colorDatabase = [];
+  }
+})();
